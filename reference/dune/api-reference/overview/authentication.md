@@ -1,0 +1,294 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.dune.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Authentication
+
+The Dune API relies on API keys for authentication. Your API key grants access and determines billing details for private queries, so safeguard it diligently!
+
+## Generate an API key
+
+In order to generate a new API key, go to settings -> API -> create new API key.
+
+<Note>
+  * Dune has two types of account: `user` account and `team` account. A team can have many users. A user can join many teams.
+  * Each user or team account has its own context. Queries created under a team account can only be managed within the team account context.
+  * An API key belongs to a specific context, and is either associated with a user account or a team account.
+</Note>
+
+<Tabs>
+  <Tab title="Create key for user account">
+    <div style={{ position: 'relative', paddingBottom: 'calc(51.3228% + 41px)', height: '0px', width: '100%' }}>
+      <iframe
+        src="https://demo.arcade.software/3Ki5RMUR9aYu1pzq8Tde?embed&embed_mobile=tab&embed_desktop=inline&show_copy_link=true"
+        title="Generate a New API Key in Dune"
+        frameBorder="0"
+        loading="lazy"
+        webkitallowfullscreen="true"
+        mozallowfullscreen="true"
+        allowFullScreen
+        allow="clipboard-write"
+        style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        colorScheme: 'light'
+      }}
+      />
+    </div>
+  </Tab>
+
+  <Tab title="Create key for team account">
+    <div style={{ position: 'relative', paddingBottom: 'calc(51.3228% + 41px)', height: '0px', width: '100%' }}>
+      <iframe
+        src="https://demo.arcade.software/qjqHlpybEvBWHd7BLy5u?embed&embed_mobile=tab&embed_desktop=inline&show_copy_link=true"
+        title="Create a New API Key in Dune"
+        frameBorder="0"
+        loading="lazy"
+        webkitallowfullscreen="true"
+        mozallowfullscreen="true"
+        allowFullScreen
+        allow="clipboard-write"
+        style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        colorScheme: 'light'
+      }}
+      />
+    </div>
+  </Tab>
+</Tabs>
+
+<br />
+
+<Warning>
+  Never share your secret API keys in public repositories or other accessible areas.
+</Warning>
+
+## Authentication & making API calls
+
+You can authenticate either with the API header or with query parameter to start making API calls. We illustrate below with [execute query endpoint](../executions/endpoint/execute-query) as an example.
+
+<Tabs>
+  <Tab title="Header Authentication">
+    To authenticate via the API header, include an `x-dune-api-key` property in your request header.
+
+    <Tabs>
+      <Tab title="cURL (bash)">
+        ```bash  theme={null}
+        curl -X POST -H x-dune-api-key:{{api_key}} "https://api.dune.com/api/v1/query/{{query_id}}/execute"
+        ```
+      </Tab>
+
+      <Tab title="Python">
+        ```python  theme={null}
+        import requests
+
+        url = "https://api.dune.com/api/v1/query/{{query_id}}/execute"
+
+        headers = {"X-DUNE-API-KEY": "<x-dune-api-key>"}
+
+        response = requests.request("POST", url, headers=headers)
+
+        print(response.text)
+        ```
+      </Tab>
+
+      <Tab title="JavaScript">
+        ```javascript  theme={null}
+        const options = {method: 'POST', headers: {'X-DUNE-API-KEY': '<x-dune-api-key>'}};
+
+        fetch('https://api.dune.com/api/v1/query/{{query_id}}/execute', options)
+        .then(response => response.json())
+        .then(response => console.log(response))
+        .catch(err => console.error(err));
+        ```
+      </Tab>
+
+      <Tab title="Go">
+        ```go  theme={null}
+        package main
+
+        import (
+            "fmt"
+            "net/http"
+            "io/ioutil"
+        )
+
+        func main() {
+
+            url := "https://api.dune.com/api/v1/query/{{query_id}}/execute"
+
+            req, _ := http.NewRequest("POST", url, nil)
+
+            req.Header.Add("X-DUNE-API-KEY", "<x-dune-api-key>")
+
+            res, _ := http.DefaultClient.Do(req)
+
+            defer res.Body.Close()
+            body, _ := ioutil.ReadAll(res.Body)
+
+            fmt.Println(res)
+            fmt.Println(string(body))
+
+        }
+        ```
+      </Tab>
+
+      <Tab title="PHP">
+        ```php  theme={null}
+        <?php
+
+        $curl = curl_init();
+
+        curl_setopt_array($curl, [
+        CURLOPT_URL => "https://api.dune.com/api/v1/query/{{query_id}}/execute",
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_ENCODING => "",
+        CURLOPT_MAXREDIRS => 10,
+        CURLOPT_TIMEOUT => 30,
+        CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        CURLOPT_CUSTOMREQUEST => "POST",
+        CURLOPT_HTTPHEADER => [
+            "X-DUNE-API-KEY: <x-dune-api-key>"
+        ],
+        ]);
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+
+        curl_close($curl);
+
+        if ($err) {
+        echo "cURL Error #:" . $err;
+        } else {
+        echo $response;
+        }
+        ?>
+        ```
+      </Tab>
+
+      <Tab title="Java">
+        ```java  theme={null}
+        HttpResponse<String> response = Unirest.post("https://api.dune.com/api/v1/query/{{query_id}}/execute")
+        .header("X-DUNE-API-KEY", "<x-dune-api-key>")
+        .asString();
+        ```
+      </Tab>
+    </Tabs>
+  </Tab>
+
+  <Tab title="Query Parameter Authentication">
+    Alternatively, use an `api_key` query parameter for authentication.
+
+    <Tabs>
+      <Tab title="cURL (bash)">
+        ```bash  theme={null}
+        curl -X POST "https://api.dune.com/api/v1/query/{{query_id}}/execute?api_key={{api_key}}"
+        ```
+      </Tab>
+
+      <Tab title="Python">
+        ```python  theme={null}
+        import requests
+
+        url = "https://api.dune.com/api/v1/query/{{query_id}}/execute"
+
+        querystring = {"api_key": "<api_key>"}
+
+        response = requests.request("POST", url, params=querystring)
+
+        print(response.text)
+        ```
+      </Tab>
+
+      <Tab title="JavaScript">
+        ```javascript  theme={null}
+        const options = {
+        method: 'POST',
+        };
+
+        const apiKey = '<api_key>';
+        const queryId = '{{query_id}}';
+        const url = `https://api.dune.com/api/v1/query/${queryId}/execute?api_key=${apiKey}`;
+
+        fetch(url, options)
+        .then(response => response.json())
+        .then(response => console.log(response))
+        .catch(err => console.error(err));
+        ```
+      </Tab>
+
+      <Tab title="Go">
+        ```go  theme={null}
+        package main
+
+        import (
+            "fmt"
+            "net/http"
+            "io/ioutil"
+        )
+
+        func main() {
+            url := "https://api.dune.com/api/v1/query/{{query_id}}/execute?api_key=<api_key>"
+
+            req, _ := http.NewRequest("POST", url, nil)
+
+            res, _ := http.DefaultClient.Do(req)
+
+            defer res.Body.Close()
+            body, _ := ioutil.ReadAll(res.Body)
+
+            fmt.Println(res)
+            fmt.Println(string(body))
+        }
+        ```
+      </Tab>
+
+      <Tab title="PHP">
+        ```php  theme={null}
+        <?php
+
+        $curl = curl_init();
+
+        curl_setopt_array($curl, [
+            CURLOPT_URL => "https://api.dune.com/api/v1/query/{{query_id}}/execute?api_key=<api_key>",
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_ENCODING => "",
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 30,
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+            CURLOPT_CUSTOMREQUEST => "POST",
+        ]);
+
+        $response = curl_exec($curl);
+        $err = curl_error($curl);
+
+        curl_close($curl);
+
+        if ($err) {
+            echo "cURL Error #:" . $err;
+        } else {
+            echo $response;
+        }
+        ?>
+        ```
+      </Tab>
+
+      <Tab title="Java">
+        ```java  theme={null}
+        HttpResponse<String> response = Unirest.post("https://api.dune.com/api/v1/query/{{query_id}}/execute?api_key=<api_key>")
+        .asString();
+        ```
+      </Tab>
+    </Tabs>
+  </Tab>
+</Tabs>
+
+
+Built with [Mintlify](https://mintlify.com).

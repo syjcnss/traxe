@@ -1,0 +1,39 @@
+[package]
+name = "trace-tx"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "trace-tx"
+path = "src/main.rs"
+
+[dependencies]
+# CLI
+clap = { version = "=4.5.38", features = ["derive", "env"] }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# HTTP
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "1"
+
+# EVM / ABI decoding
+alloy-json-abi = "0.8"
+alloy-dyn-abi = "0.8"
+
+# Terminal output
+colored = "2"
+
+# Async traits
+async-trait = "0.1"
+
+# Hex encoding
+hex = "0.4"

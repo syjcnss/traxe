@@ -1,0 +1,174 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.dune.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Overview
+
+Build blockchain analytics workflows with Dune's comprehensive API suite. Access the same data that powers thousands of Dune dashboards, available programmatically for your data pattern needs.
+
+Dune API provides a variety of endpoints for **analysts**, **data engineers**, and **data scientists**, ranging from low-level, customizable options to connectors ready for immediate use.
+
+Queries saved in the Dune App UI can be executed via API and results retrieved in your environment, enabling bulk data extraction and automated workflows.
+
+<Note>
+  <span className="cta-links">**New to Dune?** **[Create a free account](https://dune.com/auth/register)** or **[get your API key](https://dune.com/apis?tab=keys)** to get started.</span>
+</Note>
+
+## What do you want to build?
+
+<CardGroup cols={2}>
+  <Card title="Analyze onchain data programmatically" icon="chart-line" href="/api-reference/apis/quickstart-analyze">
+    Execute SQL queries, retrieve results, and build custom analytics pipelines with Dune's query execution engine. Perfect for data teams and analysts.
+
+    → Start with query execution
+  </Card>
+
+  <Card title="Run queries in your environment" icon="server" href="/api-reference/connectors/overview">
+    Connect directly to Dune's data warehouse using Trino Connector for maximum flexibility. Perfect for enterprise teams with existing BI tools.
+
+    → Set up Trino connector
+  </Card>
+
+  <Card title="Build custom dashboards & reports" icon="desktop" href="/api-reference/apis/quickstart-dashboards">
+    Fetch query results, manage executions, and create dynamic visualizations in your own applications. Perfect for teams embedding analytics.
+
+    → Create your first dashboard
+  </Card>
+
+  <Card title="Build real-time applications" icon="bolt" href="https://docs.sim.dune.com/evm/build-a-realtime-wallet">
+    Create a multichain wallet with realtime balances, transactions, and NFTs using Sim by Dune. Perfect for mobile developers and DeFi applications.
+
+    → Build a realtime wallet with Sim
+  </Card>
+
+  <Card title="Transform data with dbt" icon="code-branch" href="/api-reference/connectors/dbt/overview">
+    Build production-grade data transformation pipelines with write access to DuneSQL. Perfect for data engineering teams using dbt.
+
+    → Set up dbt connector
+  </Card>
+
+  <Card title="BI Visualization Tools" icon="chart-bar" href="/api-reference/connectors/trino/overview">
+    Connect Dune to your favorite BI tools like Hex, Metabase, and DBeaver using the Trino/Presto connector.
+
+    → Connect BI tools
+  </Card>
+</CardGroup>
+
+<Card title="Get started with the basics" icon="rocket" href="/api-reference/overview/getting-started">
+  New to APIs? Start here to make your first request and see results in minutes.
+
+  Learn how to execute a simple SQL query, authenticate your requests, and retrieve blockchain data programmatically.
+
+  → Make your first request
+</Card>
+
+## Quick Start with SDKs
+
+Our SDKs handle authentication, polling, pagination, and error handling automatically. The new `execute()` function manages the entire workflow for you.
+
+<CardGroup cols={1}>
+  <Card title="Python" icon="python" href="/api-reference/overview/sdks#python">
+    ```bash  theme={null}
+    pip install dune-client
+    ```
+
+    ```python  theme={null}
+    from dune_client import DuneClient
+
+    dune = DuneClient(api_key="your-key")
+    results = dune.execute(query_id=3493826)
+    ```
+
+    [Full Python documentation →](/api-reference/overview/sdks#python)
+  </Card>
+
+  <Card title="TypeScript" icon="js" href="/api-reference/overview/sdks#typescript">
+    ```bash  theme={null}
+    npm install @duneanalytics/client
+    ```
+
+    ```typescript  theme={null}
+    import { DuneClient } from '@duneanalytics/client';
+
+    const dune = new DuneClient('your-key');
+    const results = await dune.execute({ queryId: 3493826 });
+    ```
+
+    [Full TypeScript documentation →](/api-reference/overview/sdks#typescript)
+  </Card>
+
+  <Card title="Go" icon="golang" href="/api-reference/overview/sdks#go">
+    ```bash  theme={null}
+    go get github.com/duneanalytics/duneapi-client-go
+    ```
+
+    ```go  theme={null}
+    client := duneapi.New("your-key")
+    results := client.Execute(3493826)
+    ```
+
+    [Full Go documentation →](/api-reference/overview/sdks#go)
+  </Card>
+</CardGroup>
+
+<Note>
+  **New:** All SDKs now include an `execute()` function that handles polling and pagination automatically. No more managing multiple API calls!
+</Note>
+
+## Additional Resources
+
+<CardGroup cols={2}>
+  <Card title="API Reference" icon="book" href="/api-reference/api-overview">
+    Complete documentation for all endpoints, parameters, response formats, and status codes.
+
+    * Execute & Results endpoints
+    * Query management
+    * Dataset metadata
+    * Usage & billing
+    * Webhooks
+  </Card>
+
+  <Card title="Troubleshooting Errors" icon="triangle-exclamation" href="/api-reference/overview/errors">
+    Common API errors and how to resolve them.
+
+    * Authentication issues
+    * Rate limit errors
+    * Query execution failures
+    * Response format errors
+  </Card>
+
+  <Card title="API Pricing" icon="credit-card" href="/api-reference/overview/billing">
+    Understand credit consumption and costs for different endpoints.
+
+    * Execution endpoints: Credit-based
+    * Metadata endpoints: Free
+    * Usage tracking available via API
+  </Card>
+
+  <Card title="Authentication" icon="key" href="/api-reference/overview/authentication">
+    Get started with API keys and authentication.
+
+    * Auto-generated keys for new teams
+    * Manage keys in settings
+    * Best practices for key security
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+<CardGroup cols={3}>
+  <Card title="Quickstarts" icon="rocket" href="/api-reference/overview/getting-started">
+    Step-by-step guides for common use cases
+  </Card>
+
+  <Card title="Community" icon="discord" href="https://discord.gg/duneanalytics">
+    Get help from the Dune community
+  </Card>
+
+  <Card title="Support" icon="life-ring" href="mailto:support@dune.com">
+    Contact our support team
+  </Card>
+</CardGroup>
+
+
+Built with [Mintlify](https://mintlify.com).

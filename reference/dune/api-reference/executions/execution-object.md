@@ -1,0 +1,64 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.dune.com/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# Overview
+
+The executions and results endpoints facilitate the execution of saved queries, retrieval of results in various formats, and management of query executions.
+
+## Queries, Executions, and Results
+
+Results are linked to executions, and executions are tied to queries. Each execution has an `execution_id`. An `execution_id` is generated when you initiate the execution of a query through the [execute query](./endpoint/execute-query) endpoint.
+
+Unlike a `query_id`, which identifies a specific query, an `execution_id` represents a particular execution of that query. With an `execution_id`, you can monitor the execution's status using the [check status](./endpoint/get-execution-status) endpoint. The status can be one of the following: pending, success, or failure.
+
+If an execution is successful, you can get the result using [get result](./endpoint/get-execution-result). Results are saved and can be retrieved multiple times.
+Results data from an execution are stored with an expiration date of 90 days (subject to change). This is visible on the API response on the “expires\_at” field in the execution status and results json body (not on the CSV endpoint).
+
+<Tip>
+  * Save your `execution_id` for later use without re-executing.
+  * Use the [get latest query result](./endpoint/get-query-result) endpoint to fetch the most recent result.
+  * Understanding the differences and relationships between query results filters, schedules, executions, and params is crucial. Further details are provided below.
+</Tip>
+
+## Query Filters vs. Execution Parameters
+
+Two primary methods exist for fetching data from the Dune API while applying specific conditions:
+
+**Option 1**: Utilize filters with the latest query result and employ schedules to maintain data freshness.
+
+1. Obtain the `query_id`.
+2. Use [get latest query result](./endpoint/get-query-result) endpoint to access the most recent results.
+3. Apply [filters](./filtering) for desired data subsets.
+4. Implement schedules for maintaining data freshness.
+
+**Option 2**: Execute a query with parameters to retrieve the desired subset of data.
+
+1. Obtain the `query_id`.
+2. Use [execute query](./endpoint/execute-query) endpoint with parameters to trigger fresh execution.
+3. Grab the `execution_id` from the response.
+4. Fetch results via [get execution result](./endpoint/get-execution-result) endpoint using the `execution_id`.
+
+### Choosing Between Options
+
+* Option 1 offers speed, as it builds upon existing results with filters. Use it when quick results are essential.
+* Option 2 allows dynamic parameter passing for fresh executions. Employ it when real-time parameterization is required.
+
+## Endpoints
+
+Below is an overview of each endpoint, providing a high-level understanding of their functionalities.
+
+| Endpoint Title                                                     | Endpoint                                       | Description                                                                                                                 |
+| ------------------------------------------------------------------ | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| [Execute SQL](./endpoint/execute-sql)                              | `POST /v1/sql/execute`                         | Executes arbitrary SQL queries directly. Returns an `execution_id` to track the query execution.                            |
+| [Execute Query](./endpoint/execute-query)                          | `POST /v1/query/{query_id}/execute`            | Triggers an execution based on the `query_id`. Returns an `execution_id`.                                                   |
+| [Execute Query Pipeline](./endpoint/execute-query-pipeline)        | `POST /v1/query/{query_id}/pipeline/execute`   | Executes a query pipeline with all its dependencies. Returns a `pipeline_execution_id`.                                     |
+| [Get Execution Status](./endpoint/get-execution-status)            | `GET /v1/execution/{execution_id}/status`      | Provides the status of a query execution given an `execution_id`.                                                           |
+| [Get Execution Result](./endpoint/get-execution-result)            | `GET /v1/execution/{execution_id}/results`     | Fetches the execution status, metadata, and results in JSON format. Similar data handling as CSV endpoint.                  |
+| [Get Execution Result in CSV](./endpoint/get-execution-result-csv) | `GET /v1/execution/{execution_id}/results/csv` | Retrieves the status, metadata, and results in CSV format. Includes data retention and limit information.                   |
+| [Get Latest Query Result](./endpoint/get-query-result)             | `GET /v1/query/{query_id}/results`             | Similar to the CSV endpoint but returns results in JSON format. Follows the same access and data limit policies.            |
+| [Get Latest Query Result in CSV](./endpoint/get-query-result-csv)  | `GET /v1/query/{query_id}/results/csv`         | Returns the latest results of a query in CSV format, irrespective of the execution method. Queries must be public or owned. |
+| [Cancel Execution](./endpoint/cancel-execution)                    | `POST /v1/execution/{execution_id}/cancel`     | Cancels an ongoing query execution. Requires the `execution_id`. Returns a success boolean.                                 |
+
+
+Built with [Mintlify](https://mintlify.com).

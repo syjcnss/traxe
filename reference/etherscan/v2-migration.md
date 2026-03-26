@@ -1,0 +1,72 @@
+> ## Documentation Index
+> Fetch the complete documentation index at: https://docs.etherscan.io/llms.txt
+> Use this file to discover all available pages before exploring further.
+
+# V2 Migration
+
+<Tip>
+  [Contract verification](/contract-verification/verify-with-foundry) using Hardhat/Remix/Foundry also support using a single Etherscan API key for all chains
+</Tip>
+
+As of **August 15th, 2025**, the legacy **Etherscan API V1 endpoints have been deprecated** in favor of the new **Etherscan API V2**, which introduces a unified multichain experience across 60+ supported networks 🌈.
+
+You’ll see a deprecation error message like this if you’re still using V1:
+
+```json  theme={null}
+{
+   "status":"0",
+   "message":"NOTOK",
+   "result":"You are using a deprecated V1 endpoint, switch to Etherscan API V2."
+}
+```
+
+All existing endpoints remain compatible once you update them to the **V2 format**.
+
+### How to Migrate
+
+<Steps>
+  <Step title="Create an Etherscan account">
+    [**Sign up**](https://etherscan.io/register) if you don't have an account or if you're using other explorers like BaseScan, BscScan, Polygonscan, etc.
+  </Step>
+
+  <Step title="Create an Etherscan API Key">
+    Under your Etherscan [**API dashboard**](https://etherscan.io/apidashboard), create a new key. This key can be used to access all [supported chains](/supported-chains) under API V2.
+  </Step>
+
+  <Step title="Migrating Endpoints from Etherscan API V1">
+    Use `https://api.etherscan.io/v2/api` as your **base path**, and include a `chainid` for your target network (e.g., 1 for Ethereum).
+
+    Before (V1):
+
+    ```text  theme={null}
+    https://api.etherscan.io/api?&action=balance&apikey=YourEtherscanApiKey
+    ```
+
+    After (V2):
+
+    ```text  theme={null}
+    https://api.etherscan.io/v2/api?chainid=1&action=balance&apikey=YourEtherscanApiKey
+    ```
+  </Step>
+
+  <Step title="Migrating Endpoints from Other Explorers">
+    Use the same base path (`https://api.etherscan.io/v2/api`) and include a `chainid` for the relevant chain from [this list](/supported-chains), in this case `137` for Polygon.
+
+    Pass in your **Etherscan API key** instead of the old explorer-specific one.
+
+    Before (PolygonScan V1):
+
+    ```text  theme={null}
+    https://api.polygonscan.com/api?&action=balance&apikey=YourPolygonscanApiKey
+    ```
+
+    After (V2):
+
+    ```text  theme={null}
+    https://api.etherscan.io/v2/api?chainid=137&action=balance&apikey=YourEtherscanApiKey
+    ```
+  </Step>
+</Steps>
+
+
+Built with [Mintlify](https://mintlify.com).

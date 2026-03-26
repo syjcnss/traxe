@@ -14,7 +14,7 @@ Given a transaction hash, the tool:
 
 Any EVM-compatible chain — provide the RPC URL and/or Blockscout endpoint, or use `--chain` with an `ALCHEMY_API_KEY`.
 
-Supported chain names: `ethereum`, `polygon`, `arbitrum`, `optimism`, `base`, `avalanche`, `bsc`, `zksync`, `linea`, `scroll`, `mantle`, `celo`, `gnosis`, `fantom`, `moonbeam`, `moonriver`, and their testnets. A raw numeric chain ID is also accepted.
+See [CHAINS.md](CHAINS.md) for the full list of supported chain names and IDs. A raw numeric chain ID is also accepted for any EVM chain.
 
 ## Installation
 

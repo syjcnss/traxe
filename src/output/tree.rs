@@ -158,7 +158,7 @@ fn color_call_type(ct: &CallType) -> colored::ColoredString {
     match ct {
         CallType::Call => "CALL".cyan().bold(),
         CallType::DelegateCall => "DELEGATECALL".blue().bold(),
-        CallType::StaticCall => "STATICCALL".bright_black().bold(),
+        CallType::StaticCall => "STATICCALL".green().bold(),
         CallType::CallCode => "CALLCODE".purple().bold(),
         CallType::Create => "CREATE".yellow().bold(),
         CallType::Create2 => "CREATE2".bright_yellow().bold(),

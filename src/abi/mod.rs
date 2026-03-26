@@ -91,6 +91,29 @@ pub fn decode_input(abi: &JsonAbi, input: &[u8]) -> Option<(String, Vec<DecodedA
     None
 }
 
+/// Decode precompile calldata that has no 4-byte selector prefix.
+/// Tries standard ABI tuple decoding first (works for ecrecover, ecadd, ecmul whose
+/// inputs are packed 32-byte words). Falls back to wrapping a single `bytes` input
+/// as raw hex for precompiles that receive arbitrary byte strings (sha256, identity, …).
+pub fn decode_raw_input(abi: &JsonAbi, fn_name: &str, input: &[u8]) -> Option<Vec<DecodedArg>> {
+    let func = abi.functions().find(|f| f.name == fn_name)?;
+
+    if let Some(decoded) = try_decode_params(&func.inputs, input) {
+        return Some(decoded);
+    }
+
+    // Single `bytes` param → wrap raw calldata directly (no ABI length prefix expected)
+    if func.inputs.len() == 1 && func.inputs[0].ty == "bytes" {
+        return Some(vec![DecodedArg {
+            name: func.inputs[0].name.clone(),
+            ty: "bytes".to_string(),
+            value: format!("0x{}", hex::encode(input)),
+        }]);
+    }
+
+    None
+}
+
 /// Decode return data for a named function. Returns decoded args or None.
 pub fn decode_output(abi: &JsonAbi, fn_name: &str, output: &[u8]) -> Option<Vec<DecodedArg>> {
     for func in abi.functions().filter(|f| f.name == fn_name) {

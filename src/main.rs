@@ -175,12 +175,29 @@ fn annotate(
     let addr_lower = frame.to.as_deref().map(|a| a.to_lowercase());
 
     if let Some(addr) = &addr_lower {
-        // Apply precompile name first
-        if let Some(name) = precompile_name(addr) {
-            frame.contract_label = Some(name.to_string());
-            // Use the precompile name as the function label too when no selector decoding is done
+        // Apply precompile name and decode its input/output
+        if let Some(pc_name) = precompile_name(addr) {
+            frame.contract_label = Some(pc_name.to_string());
             if frame.function_name.is_none() {
-                frame.function_name = Some(name.to_string());
+                frame.function_name = Some(pc_name.to_string());
+            }
+            if frame.decoded_input.is_none() && !frame.input.is_empty() && frame.input != "0x" {
+                if let Some(pc_abi) = abi::well_known::precompile_abi(addr) {
+                    let input_bytes =
+                        hex::decode(frame.input.trim_start_matches("0x")).unwrap_or_default();
+                    if let Some(decoded) = abi::decode_raw_input(&pc_abi, pc_name, &input_bytes) {
+                        frame.decoded_input = Some(decoded);
+                        if let Some(output_hex) = &frame.output {
+                            let output_bytes =
+                                hex::decode(output_hex.trim_start_matches("0x")).unwrap_or_default();
+                            if let Some(out) =
+                                abi::decode_output(&pc_abi, pc_name, &output_bytes)
+                            {
+                                frame.decoded_output = Some(out);
+                            }
+                        }
+                    }
+                }
             }
         }
 

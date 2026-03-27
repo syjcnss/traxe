@@ -1,4 +1,5 @@
 mod abi;
+mod chainlist;
 mod chains;
 mod cli;
 mod label;
@@ -41,36 +42,37 @@ async fn main() -> Result<()> {
     };
     let chain_id = chain.chain_id;
 
-    // Resolve RPC URL: explicit flag > construct from ALCHEMY_API_KEY + chain
-    let rpc_url = cli.rpc.clone().or_else(|| {
-        let key = std::env::var("ALCHEMY_API_KEY").ok()?;
-        let network = chain.alchemy_network?;
-        Some(format!("https://{network}.g.alchemy.com/v2/{key}"))
-    });
-
     let http = reqwest::Client::new();
+
+    // Resolve RPC URL (always required): --rpc > ALCHEMY_API_KEY > chainlist
+    // When chainlist is used, it probes via debug_traceTransaction and returns the cached trace.
+    let (rpc_url, cached_trace) =
+        resolve_rpc_url(&http, cli.rpc.as_deref(), &chain, &cli.tx_hash).await?;
 
     // If --chain was not provided, query the RPC for the actual chain ID.
     let chain_id = if cli.chain.is_none() {
-        if let Some(url) = rpc_url.as_deref() {
-            let id = trace::rpc::fetch_chain_id(&http, url).await
-                .context("failed to fetch chain ID from RPC; use --chain/-c to specify it")?;
-            log::debug!("chain ID from RPC: {}", id);
-            id
-        } else {
-            chain_id
-        }
+        let id = trace::rpc::fetch_chain_id(&http, &rpc_url).await
+            .context("failed to fetch chain ID from RPC; use --chain/-c to specify it")?;
+        log::debug!("chain ID from RPC: {}", id);
+        id
     } else {
         chain_id
     };
 
     // Build Providers and report what is available.
-    let providers = provider::Providers::new(rpc_url, cli.blockscout.clone());
+    let providers = provider::Providers::new(Some(rpc_url), cli.blockscout.clone());
     providers.print_enabled();
 
     // --- 1. Fetch trace ---
     log::debug!("fetching trace for {} on chain {}", cli.tx_hash, chain_id);
-    let root = fetch_trace(&cli, &http, &providers, chain_id).await?;
+    let root = if let (Some(frame), None | Some(TraceProvider::Rpc)) =
+        (&cached_trace, &cli.trace_provider)
+    {
+        log::debug!("using cached debug_traceTransaction result from chainlist probe");
+        frame.clone()
+    } else {
+        fetch_trace(&cli, &http, &providers, chain_id).await?
+    };
 
     // --- 2. Collect all unique addresses ---
     let addresses = collect_addresses(&root);
@@ -461,6 +463,51 @@ fn apply_fourbyte_names(frame: &mut types::CallFrame, names: &HashMap<String, St
     for child in &mut frame.calls {
         apply_fourbyte_names(child, names);
     }
+}
+
+/// Resolve a working RPC URL in priority order:
+/// 1. Explicit `--rpc` flag
+/// 2. `ALCHEMY_API_KEY` env var (requires a known Alchemy network slug for the chain)
+/// 3. Chainlist.org — probes each public RPC via `debug_traceTransaction`; returns the URL
+///    plus the cached trace result so the caller can skip a second identical request.
+///
+/// Returns `(rpc_url, cached_trace)`. `cached_trace` is `Some` only when chainlist was used.
+async fn resolve_rpc_url(
+    http: &reqwest::Client,
+    cli_rpc: Option<&str>,
+    chain: &chains::Chain,
+    tx_hash: &str,
+) -> Result<(String, Option<types::CallFrame>)> {
+    // 1. Explicit --rpc flag
+    if let Some(url) = cli_rpc {
+        return Ok((url.to_string(), None));
+    }
+
+    // 2. ALCHEMY_API_KEY env var
+    if let Ok(key) = std::env::var("ALCHEMY_API_KEY") {
+        if let Some(network) = chain.alchemy_network {
+            return Ok((format!("https://{network}.g.alchemy.com/v2/{key}"), None));
+        }
+    }
+
+    // 3. Chainlist.org fallback — probe via debug_traceTransaction and cache the result.
+    eprintln!("No RPC configured — searching chainlist.org for a public RPC endpoint...");
+    if let Some((url, trace_json)) =
+        chainlist::find_working_rpc(http, chain.chain_id, tx_hash).await
+    {
+        eprintln!("Using RPC from chainlist: {url}");
+        let cached = trace::rpc::parse_call_tracer_frame(&trace_json)
+            .map_err(|e| log::debug!("chainlist: failed to parse cached trace: {}", e))
+            .ok();
+        return Ok((url, cached));
+    }
+
+    anyhow::bail!(
+        "No working RPC found for chain {}. \
+         Provide --rpc <url>, set ALCHEMY_API_KEY, or ensure chainlist.org lists an \
+         accessible RPC for this chain.",
+        chain.chain_id
+    )
 }
 
 fn delegatecall_selector(input: &str) -> Option<[u8; 4]> {

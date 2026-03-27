@@ -39,7 +39,7 @@ impl Providers {
         rows.push(Row { name: "sourcify", via: "always".to_string() });
 
         if let Some(url) = &self.rpc_url {
-            rows.push(Row { name: "rpc", via: format!("--rpc  ({})", redact_url(url)) });
+            rows.push(Row { name: "rpc", via: format!("--rpc  ({})", url) });
             rows.push(Row { name: "simulator", via: "--rpc  (--trace-provider simulator)".to_string() });
         }
 
@@ -63,13 +63,3 @@ impl Providers {
     }
 }
 
-/// Redact the last path segment if it looks like an API key (more than 12 chars).
-fn redact_url(url: &str) -> String {
-    if let Some(pos) = url.rfind('/') {
-        let segment = &url[pos + 1..];
-        if segment.len() > 12 {
-            return format!("{}/***", &url[..pos]);
-        }
-    }
-    url.to_string()
-}

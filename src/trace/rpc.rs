@@ -70,7 +70,7 @@ pub async fn fetch(
 }
 
 
-fn parse_call_tracer_frame(v: &Value) -> Result<CallFrame> {
+pub fn parse_call_tracer_frame(v: &Value) -> Result<CallFrame> {
     let call_type = parse_call_type(v.get("type").and_then(|t| t.as_str()).unwrap_or("CALL"));
 
     let calls = if let Some(arr) = v.get("calls").and_then(|c| c.as_array()) {

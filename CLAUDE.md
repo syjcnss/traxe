@@ -1,4 +1,4 @@
-# trace-tx
+# traxe
 
 See README.md for project documentation.
 

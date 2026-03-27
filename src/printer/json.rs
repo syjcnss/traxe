@@ -6,6 +6,12 @@ use super::Printer;
 
 pub struct JsonPrinter;
 
+impl JsonPrinter {
+    pub fn new() -> Self {
+        Self
+    }
+}
+
 impl Printer for JsonPrinter {
     fn print(&self, root: &Node, out: &mut dyn io::Write) -> Result<()> {
         let json = serde_json::to_string_pretty(root)?;

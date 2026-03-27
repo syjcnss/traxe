@@ -5,11 +5,25 @@ use crate::ir::Node;
 use super::Printer;
 
 pub struct HtmlPrinter {
-    pub tx_hash: String,
-    pub native_symbol: String,
+    tx_hash: String,
+    native_symbol: String,
+}
+
+impl HtmlPrinter {
+    pub fn new(tx_hash: String, native_symbol: String) -> Self {
+        Self { tx_hash, native_symbol }
+    }
 }
 
 impl Printer for HtmlPrinter {
+    fn print_to_file(&self) -> bool {
+        true
+    }
+
+    fn default_path(&self) -> Option<std::path::PathBuf> {
+        Some(std::path::PathBuf::from(format!("{}.html", self.tx_hash)))
+    }
+
     fn print(&self, root: &Node, out: &mut dyn io::Write) -> Result<()> {
         let data_json = serde_json::to_string(root)?;
         // Prevent </script> in JSON from breaking the script tag
@@ -343,7 +357,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
           <header className="fixed top-0 left-0 right-0 z-50 bg-zinc-100 border-b border-zinc-200 dark:bg-zinc-900 dark:border-zinc-800">
             <div className="flex items-center gap-3 px-4 h-12">
               <span className="font-bold text-sm text-violet-400 tracking-tight shrink-0">
-                trace-tx
+                traxe
               </span>
               <div className="w-px h-4 bg-zinc-300 dark:bg-zinc-700 shrink-0" />
               <span

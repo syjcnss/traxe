@@ -12,7 +12,6 @@ mod types;
 use anyhow::{Context, Result};
 use clap::Parser;
 use cli::{Cli, PrinterKind, TraceProvider};
-use std::path::PathBuf;
 use printer::Printer;
 use std::collections::HashMap;
 
@@ -21,11 +20,11 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     if cli.debug {
-        std::env::set_var("RUST_LOG", "trace_tx=debug");
+        std::env::set_var("RUST_LOG", "traxe=debug");
     }
     env_logger::init();
 
-    if cli.no_color {
+    if cli.tree.no_color {
         colored::control::set_override(false);
     }
 
@@ -110,37 +109,26 @@ async fn main() -> Result<()> {
     // --- 6. Build IR and print ---
     let ir_root = ir::Node::from(root);
     let p: Box<dyn Printer> = match cli.printer {
-        PrinterKind::Json => Box::new(printer::json::JsonPrinter),
+        PrinterKind::Json => Box::new(printer::json::JsonPrinter::new()),
         PrinterKind::Tree => Box::new(printer::tree::TreePrinter::new(
             native_symbol.to_string(),
             &cli.tree,
         )),
-        PrinterKind::Html => Box::new(printer::html::HtmlPrinter {
-            tx_hash: cli.tx_hash.clone(),
-            native_symbol: native_symbol.to_string(),
-        }),
+        PrinterKind::Html => Box::new(printer::html::HtmlPrinter::new(
+            cli.tx_hash.clone(),
+            native_symbol.to_string(),
+        )),
     };
 
-    // For the HTML printer, default to <tx_hash>.html when no -o is given.
-    let output_path: Option<PathBuf> = cli.output.clone().or_else(|| {
-        if cli.printer == PrinterKind::Html {
-            Some(PathBuf::from(format!("{}.html", cli.tx_hash)))
-        } else {
-            None
-        }
+    let output_path = cli.output.clone().or_else(|| {
+        if p.print_to_file() { p.default_path() } else { None }
     });
-
-    if let Some(path) = &output_path {
-        // Disable colors when writing to a file (unless already forced off)
-        if !cli.no_color {
-            colored::control::set_override(false);
-        }
+    if let Some(ref path) = output_path {
+        colored::control::set_override(false);
         let mut file = std::fs::File::create(path)
             .with_context(|| format!("failed to create output file: {}", path.display()))?;
         p.print(&ir_root, &mut file)?;
-        if cli.printer == PrinterKind::Html {
-            eprintln!("HTML trace written to {}", path.display());
-        }
+        log::debug!("written to {}", path.display());
     } else {
         p.print(&ir_root, &mut std::io::stdout())?;
     }

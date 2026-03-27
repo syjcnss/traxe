@@ -3,7 +3,7 @@ use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
-    name = "trace-tx",
+    name = "traxe",
     about = "Fetch and visualize EVM transaction call traces",
     version
 )]
@@ -28,24 +28,20 @@ pub struct Cli {
     #[arg(long, value_enum)]
     pub trace_provider: Option<TraceProvider>,
 
-    /// Printer to use for output
-    #[arg(long, value_enum, default_value = "tree")]
-    pub printer: PrinterKind,
-
-    /// Disable colored output
-    #[arg(long)]
-    pub no_color: bool,
-
-    #[command(flatten)]
-    pub tree: TreeArgs,
-
-    /// Write output to a file instead of stdout
-    #[arg(short = 'o', long, value_name = "FILE")]
-    pub output: Option<PathBuf>,
-
     /// Enable debug logging
     #[arg(long, short = 'd')]
     pub debug: bool,
+
+    /// Printer to use for output
+    #[arg(long, value_enum, default_value = "tree", help_heading = "Printer Options")]
+    pub printer: PrinterKind,
+
+    /// Write output to a file instead of stdout
+    #[arg(short = 'o', long, value_name = "FILE", help_heading = "Printer Options")]
+    pub output: Option<PathBuf>,
+
+    #[command(flatten)]
+    pub tree: TreeArgs,
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]
@@ -64,6 +60,7 @@ pub enum PrinterKind {
 }
 
 #[derive(Args, Debug)]
+#[command(next_help_heading = "Printer Options")]
 pub struct TreeArgs {
     /// Show raw call input and return data (hex) [tree printer only]
     #[arg(long = "tree-raw-data")]
@@ -76,4 +73,8 @@ pub struct TreeArgs {
     /// Show gas usage [tree printer only]
     #[arg(long = "tree-show-gas")]
     pub show_gas: bool,
+
+    /// Disable colored output [tree printer only]
+    #[arg(long = "tree-no-color")]
+    pub no_color: bool,
 }

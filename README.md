@@ -1,4 +1,4 @@
-# trace-tx
+# traxe
 
 A Rust CLI tool that fetches and visualizes EVM transaction call traces given a transaction hash.
 
@@ -27,7 +27,7 @@ cargo install --path .
 ## Usage
 
 ```
-trace-tx [OPTIONS] <TX_HASH>
+traxe [OPTIONS] <TX_HASH>
 
 Options:
   -c, --chain <name|id>                                   Chain name or ID (e.g. ethereum, polygon, 1, 137).

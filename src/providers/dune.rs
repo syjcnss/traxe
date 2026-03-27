@@ -1,9 +1,54 @@
 use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::Duration;
 
 use crate::types::{CallFrame, CallType};
+
+use super::Provider;
+
+/// Fetches traces from Dune Analytics SQL API.
+/// If `sim_rpc_url` is provided, event logs are populated via local simulation after fetch.
+pub struct DuneProvider {
+    http: reqwest::Client,
+    api_key: String,
+    /// Optional RPC URL used to populate event logs (Dune traces contain no logs).
+    sim_rpc_url: Option<String>,
+}
+
+impl DuneProvider {
+    pub fn new(http: reqwest::Client, api_key: String, sim_rpc_url: Option<String>) -> Self {
+        Self { http, api_key, sim_rpc_url }
+    }
+}
+
+#[async_trait]
+impl Provider for DuneProvider {
+    fn name(&self) -> &'static str {
+        "dune"
+    }
+
+    async fn fetch_trace(&self, tx_hash: &str, chain_id: u64) -> Result<CallFrame> {
+        let mut frame = fetch_dune_trace(&self.http, tx_hash, chain_id, &self.api_key).await?;
+
+        // Populate event logs from simulation if an RPC endpoint is available.
+        if let Some(rpc_url) = &self.sim_rpc_url {
+            log::debug!("dune: populating event logs via simulation");
+            match super::simulator::fetch(&self.http, Some(rpc_url), tx_hash, chain_id).await {
+                Ok(sim_root) => {
+                    position_logs_from_simulation(&mut frame, &sim_root);
+                    log::debug!("dune: event logs populated via simulation");
+                }
+                Err(e) => {
+                    log::debug!("dune: simulation failed ({}), skipping event log population", e);
+                }
+            }
+        }
+
+        Ok(frame)
+    }
+}
 
 /// Dune Analytics schema name for a given EVM chain ID.
 /// Returns None for chains without a Dune traces table.
@@ -62,12 +107,12 @@ fn dune_chain_table(chain_id: u64) -> Option<&'static str> {
     }
 }
 
-pub async fn fetch(
+async fn fetch_dune_trace(
     http: &reqwest::Client,
     tx_hash: &str,
     chain_id: u64,
+    api_key: &str,
 ) -> Result<CallFrame> {
-    let api_key = std::env::var("DUNE_API_KEY").context("DUNE_API_KEY not set")?;
     let chain = dune_chain_table(chain_id)
         .ok_or_else(|| anyhow!("Dune: no traces table for chain_id {}", chain_id))?;
     // Normalize tx_hash: Dune stores tx_hash as varbinary
@@ -90,10 +135,9 @@ pub async fn fetch(
     );
 
     log::debug!("dune: executing SQL for {} on chain {} ({})", tx_hash, chain_id, chain);
-    // Execute SQL
     let exec_resp: Value = http
         .post("https://api.dune.com/api/v1/sql/execute")
-        .header("X-Dune-Api-Key", &api_key)
+        .header("X-Dune-Api-Key", api_key)
         .json(&json!({"sql": sql, "performance": "medium"}))
         .send()
         .await
@@ -109,8 +153,7 @@ pub async fn fetch(
         .to_string();
 
     log::debug!("dune: execution_id={}, polling for results", execution_id);
-    // Poll for completion
-    let results = poll_and_fetch(http, &api_key, &execution_id).await?;
+    let results = poll_and_fetch(http, api_key, &execution_id).await?;
 
     let rows = results
         .get("result")
@@ -182,31 +225,21 @@ async fn poll_and_fetch(
 /// Reconstruct the nested call tree from Dune's flat trace rows.
 /// Each row has `trace_address` = array of indices, e.g. [] (root), [0], [0,0], [1], etc.
 fn build_tree(rows: &[Value]) -> Result<CallFrame> {
-    // Build a map: trace_address -> row index
     let mut frames: Vec<CallFrame> = rows
         .iter()
-        .map(|row| row_to_frame(row))
+        .map(row_to_frame)
         .collect::<Result<Vec<_>>>()?;
 
-    // We build the tree bottom-up using trace_address paths.
-    // trace_address of a parent is the child's trace_address[..len-1]
-    // We'll use index-based approach: sort by trace_address length desc, then insert into parent.
-
-    // Collect trace_addresses
     let addresses: Vec<Vec<usize>> = rows
         .iter()
-        .map(|row| parse_trace_address(row))
+        .map(parse_trace_address)
         .collect();
 
-    // Build index map: trace_address -> index in frames
     let mut addr_to_idx: HashMap<Vec<usize>, usize> = HashMap::new();
     for (i, addr) in addresses.iter().enumerate() {
         addr_to_idx.insert(addr.clone(), i);
     }
 
-    // Process in reverse order (deepest first) to attach children to parents
-    // We need a different approach since we can't mutably borrow twice.
-    // Build a child map: parent_idx -> Vec<child_idx>
     let mut children: HashMap<usize, Vec<usize>> = HashMap::new();
     let mut root_idx = 0;
 
@@ -221,7 +254,6 @@ fn build_tree(rows: &[Value]) -> Result<CallFrame> {
         }
     }
 
-    // Recursively build the tree
     fn attach_children(
         idx: usize,
         frames: &mut Vec<CallFrame>,
@@ -229,11 +261,10 @@ fn build_tree(rows: &[Value]) -> Result<CallFrame> {
     ) {
         if let Some(child_indices) = children.get(&idx) {
             let mut sorted = child_indices.clone();
-            sorted.sort(); // preserve order
+            sorted.sort();
             for &child_idx in &sorted {
                 attach_children(child_idx, frames, children);
             }
-            // Now move children frames into parent
             let child_frames: Vec<CallFrame> = sorted
                 .iter()
                 .map(|&ci| frames[ci].clone())
@@ -256,6 +287,23 @@ fn parse_trace_address(row: &Value) -> Vec<usize> {
                 .collect()
         })
         .unwrap_or_default()
+}
+
+/// Merge logs from a simulation call tree into a Dune call tree (which lacks logs).
+///
+/// Walks both trees in parallel and copies logs from each simulation frame into
+/// the corresponding Dune frame. The trees must have the same call structure;
+/// if they diverge (simulation inaccuracy), the best-effort overlap is used.
+fn position_logs_from_simulation(dune_root: &mut CallFrame, sim_root: &CallFrame) {
+    merge_logs_recursive(dune_root, sim_root);
+}
+
+fn merge_logs_recursive(dune: &mut CallFrame, sim: &CallFrame) {
+    dune.logs = sim.logs.clone();
+    let min_len = dune.calls.len().min(sim.calls.len());
+    for i in 0..min_len {
+        merge_logs_recursive(&mut dune.calls[i], &sim.calls[i]);
+    }
 }
 
 fn row_to_frame(row: &Value) -> Result<CallFrame> {
@@ -328,9 +376,5 @@ fn row_to_frame(row: &Value) -> Result<CallFrame> {
         revert_reason: None,
         calls: vec![],
         logs: vec![],
-        function_name: None,
-        decoded_input: None,
-        decoded_output: None,
-        contract_label: None,
     })
 }

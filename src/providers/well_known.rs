@@ -1,4 +1,52 @@
 use alloy_json_abi::JsonAbi;
+use anyhow::Result;
+use async_trait::async_trait;
+
+use crate::types::ResolvedAbi;
+
+use super::Provider;
+
+/// Serves built-in ABIs for EVM precompiles (0x01–0x0a) without any network calls.
+pub struct WellKnownProvider;
+
+#[async_trait]
+impl Provider for WellKnownProvider {
+    fn name(&self) -> &'static str {
+        "well_known"
+    }
+
+    async fn fetch_abi(&self, address: &str, _chain_id: u64) -> Result<ResolvedAbi> {
+        let name = precompile_name(address)
+            .ok_or_else(|| anyhow::anyhow!("not a well-known address"))?;
+        let abi = precompile_abi(address)
+            .ok_or_else(|| anyhow::anyhow!("not a well-known address"))?;
+        Ok(ResolvedAbi { abi, contract_name: Some(name.to_string()), selector_free: true })
+    }
+
+    async fn fetch_label(&self, address: &str, _chain_id: u64) -> Result<String> {
+        precompile_name(address)
+            .map(|n| n.to_string())
+            .ok_or_else(|| anyhow::anyhow!("not a well-known address"))
+    }
+}
+
+/// Human-readable name for an Ethereum precompile, keyed by address.
+/// Returns None for unknown addresses.
+pub fn precompile_name(addr: &str) -> Option<&'static str> {
+    match addr {
+        "0x0000000000000000000000000000000000000001" => Some("ecrecover"),
+        "0x0000000000000000000000000000000000000002" => Some("sha256"),
+        "0x0000000000000000000000000000000000000003" => Some("ripemd160"),
+        "0x0000000000000000000000000000000000000004" => Some("identity"),
+        "0x0000000000000000000000000000000000000005" => Some("modexp"),
+        "0x0000000000000000000000000000000000000006" => Some("ecadd"),
+        "0x0000000000000000000000000000000000000007" => Some("ecmul"),
+        "0x0000000000000000000000000000000000000008" => Some("ecpairing"),
+        "0x0000000000000000000000000000000000000009" => Some("blake2f"),
+        "0x000000000000000000000000000000000000000a" => Some("pointEvaluation"),
+        _ => None,
+    }
+}
 
 /// ABI for an Ethereum precompile contract, keyed by address.
 /// Returns None for unknown addresses.

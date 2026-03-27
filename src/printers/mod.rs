@@ -1,16 +1,16 @@
 pub mod html;
 pub mod json;
-pub mod tree;
+pub mod text;
 
 use anyhow::Result;
 use std::io;
 use std::path::PathBuf;
 
-use crate::cli::TreeConfig;
-use crate::ir::Node;
+use crate::cli::TextConfig;
+use crate::tree::Node;
 
 pub struct PrinterConfig {
-    pub tree: TreeConfig,
+    pub text: TextConfig,
 }
 
 /// Common context available to all printers.

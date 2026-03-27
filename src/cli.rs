@@ -1,5 +1,7 @@
-use clap::{Args, Parser, ValueEnum};
+use clap::{Args, Parser};
 use std::path::PathBuf;
+
+pub use crate::providers::TraceSource;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -26,14 +28,14 @@ pub struct Cli {
 
     /// Force a specific trace provider
     #[arg(long, value_enum)]
-    pub trace_provider: Option<TraceProvider>,
+    pub trace_provider: Option<TraceSource>,
 
     /// Enable debug logging
     #[arg(long, short = 'd')]
     pub debug: bool,
 
     /// Printer to use for output
-    #[arg(long, value_enum, default_value = "tree", help_heading = "Printer Options")]
+    #[arg(long, value_enum, default_value = "text", help_heading = "Printer Options")]
     pub printer: PrinterKind,
 
     /// Write output to a file instead of stdout
@@ -41,7 +43,7 @@ pub struct Cli {
     pub output: Option<PathBuf>,
 
     #[command(flatten)]
-    pub tree: TreeConfig,
+    pub text: TextConfig,
 
     #[command(flatten)]
     pub html: HtmlConfig,
@@ -50,38 +52,30 @@ pub struct Cli {
     pub json: JsonConfig,
 }
 
-#[derive(ValueEnum, Debug, Clone, PartialEq)]
-pub enum TraceProvider {
-    Rpc,
-    Dune,
-    Blockscout,
-    Simulator,
-}
-
-#[derive(ValueEnum, Debug, Clone, PartialEq)]
+#[derive(clap::ValueEnum, Debug, Clone, PartialEq)]
 pub enum PrinterKind {
     Json,
-    Tree,
+    Text,
     Html,
 }
 
 #[derive(Args, Debug, Clone)]
-#[command(next_help_heading = "Tree Printer Options")]
-pub struct TreeConfig {
+#[command(next_help_heading = "Text Printer Options")]
+pub struct TextConfig {
     /// Show raw call input and return data (hex)
-    #[arg(long = "tree-raw-data")]
+    #[arg(long = "text-raw-data")]
     pub raw_data: bool,
 
     /// Hide emitted events (logs)
-    #[arg(long = "tree-no-events")]
+    #[arg(long = "text-no-events")]
     pub no_events: bool,
 
     /// Show gas usage
-    #[arg(long = "tree-show-gas")]
+    #[arg(long = "text-show-gas")]
     pub show_gas: bool,
 
     /// Disable colored output
-    #[arg(long = "tree-no-color")]
+    #[arg(long = "text-no-color")]
     pub no_color: bool,
 }
 

@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::io;
 
-use crate::ir::Node;
+use crate::tree::Node;
 use super::{Printer, PrintContext};
 
 pub struct JsonPrinter;

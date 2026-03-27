@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Context as AnyhowContext, Result};
+use async_trait::async_trait;
 use serde_json::{json, Value};
 
 use revm::{
@@ -19,6 +20,33 @@ use revm::{
 };
 
 use crate::types::{CallFrame, CallType, Log as CrateLog};
+
+use super::Provider;
+
+/// Fetches traces by running a local EVM simulation via revm.
+/// May be inaccurate — used as a last-resort fallback.
+pub struct SimulatorProvider {
+    http: reqwest::Client,
+    rpc_url: String,
+}
+
+impl SimulatorProvider {
+    pub fn new(http: reqwest::Client, rpc_url: String) -> Self {
+        Self { http, rpc_url }
+    }
+}
+
+#[async_trait]
+impl Provider for SimulatorProvider {
+    fn name(&self) -> &'static str {
+        "simulator"
+    }
+
+    async fn fetch_trace(&self, tx_hash: &str, chain_id: u64) -> Result<CallFrame> {
+        log::debug!("Warning: falling back to local simulation — trace may be inaccurate");
+        fetch(&self.http, Some(&self.rpc_url), tx_hash, chain_id).await
+    }
+}
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -246,13 +274,13 @@ struct PartialFrame {
     logs: Vec<CrateLog>,
 }
 
-pub struct CallTracer {
+struct CallTracer {
     stack: Vec<PartialFrame>,
-    pub result: Option<CallFrame>,
+    result: Option<CallFrame>,
 }
 
 impl CallTracer {
-    pub fn new() -> Self {
+    fn new() -> Self {
         Self { stack: vec![], result: None }
     }
 
@@ -271,10 +299,6 @@ impl CallTracer {
             revert_reason: None,
             calls: frame.calls,
             logs: frame.logs,
-            function_name: None,
-            decoded_input: None,
-            decoded_output: None,
-            contract_label: None,
         };
         if self.stack.is_empty() {
             self.result = Some(cf);
@@ -393,8 +417,6 @@ where
             address: fmt_addr(log.address),
             topics,
             data: fmt_bytes(&log.data.data),
-            event_name: None,
-            decoded_args: None,
         });
     }
 }
@@ -412,7 +434,7 @@ where
 ///   4. Execute with revm + `CallTracer` inspector → full call tree.
 ///
 /// No `debug_traceTransaction` or `prestateTracer` required.
-pub async fn fetch(
+pub(super) async fn fetch(
     http: &reqwest::Client,
     rpc_url: Option<&str>,
     tx_hash: &str,

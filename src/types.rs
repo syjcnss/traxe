@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-/// A single call frame in the trace tree.
+/// A single call frame in the raw trace — pure provider output, no annotations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CallFrame {
     pub call_type: CallType,
@@ -15,30 +15,14 @@ pub struct CallFrame {
     pub revert_reason: Option<String>,
     pub calls: Vec<CallFrame>,
     pub logs: Vec<Log>,
-
-    // Resolved metadata (filled in by resolvers)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub function_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub decoded_input: Option<Vec<DecodedArg>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub decoded_output: Option<Vec<DecodedArg>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub contract_label: Option<String>,
 }
 
-/// A single event log emitted during a call.
+/// A single event log emitted during a call — pure provider output, no annotations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Log {
     pub address: String,
     pub topics: Vec<String>,
     pub data: String,
-
-    // Resolved metadata (filled in by resolvers)
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub event_name: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub decoded_args: Option<Vec<DecodedArg>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -76,4 +60,6 @@ pub struct DecodedArg {
 pub struct ResolvedAbi {
     pub abi: alloy_json_abi::JsonAbi,
     pub contract_name: Option<String>,
+    /// True when the ABI has no 4-byte selector prefix (e.g. EVM precompiles).
+    pub selector_free: bool,
 }

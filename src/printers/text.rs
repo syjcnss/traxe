@@ -2,32 +2,32 @@ use anyhow::Result;
 use colored::Colorize;
 use std::io;
 
-use crate::ir::{CallNode, EventNode, Node};
+use crate::tree::{CallNode, EventNode, Node};
 use crate::types::{CallType, DecodedArg};
 use super::{Printer, PrintContext};
 
-pub struct TreePrinter {
+pub struct TextPrinter {
     native_symbol: String,
     raw_data: bool,
     show_events: bool,
     show_gas: bool,
 }
 
-impl TreePrinter {
+impl TextPrinter {
     pub fn new(ctx: &PrintContext) -> Self {
-        if ctx.config.tree.no_color {
+        if ctx.config.text.no_color {
             colored::control::set_override(false);
         }
         Self {
             native_symbol: ctx.native_symbol.clone(),
-            raw_data: ctx.config.tree.raw_data,
-            show_events: !ctx.config.tree.no_events,
-            show_gas: ctx.config.tree.show_gas,
+            raw_data: ctx.config.text.raw_data,
+            show_events: !ctx.config.text.no_events,
+            show_gas: ctx.config.text.show_gas,
         }
     }
 }
 
-impl Printer for TreePrinter {
+impl Printer for TextPrinter {
     fn print(&self, root: &Node, out: &mut dyn io::Write) -> Result<()> {
         if let Node::Call(call) = root {
             writeln!(out, "{}", call.from.bright_white().bold())?;
@@ -42,6 +42,17 @@ fn print_node(out: &mut dyn io::Write, node: &Node, prefix: &str, is_last: bool,
         Node::Call(call) => print_call(out, call, prefix, is_last, native_symbol, raw_data, show_events, show_gas),
         Node::Event(event) => print_event(out, event, prefix, is_last),
     }
+}
+
+/// Returns true if `call` has exactly one call child, it's a DELEGATECALL, and the
+/// outer call's input/output are identical to the delegate's — so the outer's
+/// input/output sections would be redundant duplicates.
+fn is_transparent_delegate(call: &CallNode) -> bool {
+    let mut call_children = call.children.iter().filter(|n| matches!(n, Node::Call(_)));
+    let Some(Node::Call(delegate)) = call_children.next() else { return false };
+    if call_children.next().is_some() { return false }
+    if delegate.call_type != CallType::DelegateCall { return false }
+    call.input == delegate.input && call.output == delegate.output
 }
 
 fn print_call(out: &mut dyn io::Write, call: &CallNode, prefix: &str, is_last: bool, native_symbol: &str, raw_data: bool, show_events: bool, show_gas: bool) -> Result<()> {
@@ -87,30 +98,43 @@ fn print_call(out: &mut dyn io::Write, call: &CallNode, prefix: &str, is_last: b
     // Used for tree connector direction on input/output sections, matching original behavior.
     let has_call_children = call.children.iter().any(|n| matches!(n, Node::Call(_)));
 
-    // Print raw input then raw output, followed by decoded input then decoded output.
+    // Print in order: raw input, decoded input, raw output, decoded output.
+    // Raw data is shown when explicitly requested (--text-raw-data) or when no decoded
+    // version is available and there is actual data to display.
     let has_decoded_input  = call.decoded_input.as_ref().map_or(false, |a| !a.is_empty());
     let has_decoded_output = call.decoded_output.as_ref().map_or(false, |a| !a.is_empty());
 
-    if raw_data {
-        let raw_in = if call.input.is_empty() { "0x" } else { &call.input };
-        print_raw_data(out, raw_in, &child_prefix, "raw input", false)?;
+    if !is_transparent_delegate(call) {
+        let input_str  = if call.input.is_empty() { "0x" } else { &call.input };
+        let raw_out    = call.output.as_deref().unwrap_or("0x");
+        let output_str = if raw_out.is_empty() { "0x" } else { raw_out };
 
-        let raw_out = call.output.as_deref().unwrap_or("0x");
-        let raw_out = if raw_out.is_empty() { "0x" } else { raw_out };
-        let after_raw = !has_decoded_input && !has_decoded_output && !has_call_children;
-        print_raw_data(out, raw_out, &child_prefix, "raw output", after_raw)?;
-    }
+        let show_raw_input  = raw_data || (call.decoded_input.is_none()  && input_str  != "0x");
+        let show_raw_output = raw_data || (call.decoded_output.is_none() && output_str != "0x");
 
-    if let Some(args) = &call.decoded_input {
-        if !args.is_empty() {
-            let is_last_item = !has_call_children && !has_decoded_output && !raw_data;
-            print_args(out, args, &child_prefix, "decoded input", is_last_item)?;
+        if show_raw_input {
+            let is_last = !has_decoded_input && !show_raw_output && !has_decoded_output && !has_call_children;
+            print_raw_data(out, input_str, &child_prefix, "raw input", is_last)?;
         }
-    }
 
-    if let Some(args) = &call.decoded_output {
-        if !args.is_empty() {
-            print_args(out, args, &child_prefix, "decoded output", !has_call_children && !raw_data)?;
+        if let Some(args) = &call.decoded_input {
+            let is_last = !show_raw_output && !has_decoded_output && !has_call_children;
+            if args.is_empty() {
+                print_raw_data(out, "()", &child_prefix, "decoded input", is_last)?;
+            } else {
+                print_args(out, args, &child_prefix, "decoded input", is_last)?;
+            }
+        }
+
+        if show_raw_output {
+            let is_last = !has_decoded_output && !has_call_children;
+            print_raw_data(out, output_str, &child_prefix, "raw output", is_last)?;
+        }
+
+        if let Some(args) = &call.decoded_output {
+            if !args.is_empty() {
+                print_args(out, args, &child_prefix, "decoded output", !has_call_children)?;
+            }
         }
     }
 

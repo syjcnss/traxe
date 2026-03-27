@@ -1,78 +1,28 @@
-mod blockscout;
-mod etherscan;
-pub mod fourbyte;
-mod sourcify;
-pub mod well_known;
-
-use std::collections::HashMap;
-
 use alloy_dyn_abi::{DynSolType, DynSolValue};
 use alloy_json_abi::{EventParam, JsonAbi, Param};
 
-use crate::provider::Providers;
-use crate::types::{DecodedArg, ResolvedAbi};
+use crate::types::DecodedArg;
 
-/// Try to resolve ABIs for all addresses. Returns a map of lowercase address -> ResolvedAbi.
-pub async fn resolve_abis(
-    http: &reqwest::Client,
-    addresses: &[String],
-    chain_id: u64,
-    providers: &Providers,
-) -> HashMap<String, ResolvedAbi> {
-    let mut result = HashMap::new();
-
-    for addr in addresses {
-        let lower = addr.to_lowercase();
-
-        // 0. Well-known precompiles — no network fetch needed
-        if let Some(abi) = well_known::precompile_abi(&lower) {
-            log::debug!("abi: well_known precompile hit for {}", lower);
-            result.insert(lower.clone(), ResolvedAbi { abi, contract_name: None });
-            continue;
-        }
-
-        // 1. Sourcify (always available)
-        log::debug!("abi: trying Sourcify for {}", lower);
-        match sourcify::fetch_abi(http, &lower, chain_id).await {
-            Ok(abi) => {
-                log::debug!("abi: Sourcify hit for {}", lower);
-                result.insert(lower.clone(), ResolvedAbi { abi, contract_name: None });
-                continue;
-            }
-            Err(e) => log::debug!("abi: Sourcify miss for {}: {}", lower, e),
-        }
-
-        // 2. Etherscan (requires ETHERSCAN_API_KEY)
-        if let Some(key) = &providers.etherscan_key {
-            log::debug!("abi: trying Etherscan for {}", lower);
-            match etherscan::fetch_abi(http, &lower, chain_id, key).await {
-                Ok((abi, name)) => {
-                    log::debug!("abi: Etherscan hit for {} (contract_name={:?})", lower, name);
-                    result.insert(lower.clone(), ResolvedAbi { abi, contract_name: name });
-                    continue;
-                }
-                Err(e) => log::debug!("abi: Etherscan miss for {}: {}", lower, e),
-            }
-        } else {
-            log::debug!("abi: skipping Etherscan for {} (ETHERSCAN_API_KEY not set)", lower);
-        }
-
-        // 3. Blockscout (requires --blockscout / BLOCKSCOUT_URL)
-        if let Some(bs_url) = &providers.blockscout_url {
-            log::debug!("abi: trying Blockscout for {}", lower);
-            match blockscout::fetch_abi(http, bs_url, &lower).await {
-                Ok(abi) => {
-                    log::debug!("abi: Blockscout hit for {}", lower);
-                    result.insert(lower.clone(), ResolvedAbi { abi, contract_name: None });
-                }
-                Err(e) => log::debug!("abi: Blockscout miss for {}: {}", lower, e),
-            }
-        } else {
-            log::debug!("abi: skipping Blockscout for {} (no blockscout URL)", lower);
-        }
+/// Decode calldata using a raw function signature string (e.g. from 4-byte DB).
+/// Returns (function_name, decoded_args) or None.
+pub fn decode_input_from_sig(sig: &str, input: &[u8]) -> Option<(String, Vec<DecodedArg>)> {
+    if input.len() < 4 {
+        return None;
     }
-
-    result
+    let func: alloy_json_abi::Function = sig.parse().ok()?;
+    let calldata = &input[4..];
+    let args = try_decode_params(&func.inputs, calldata).unwrap_or_else(|| {
+        if calldata.is_empty() {
+            vec![]
+        } else {
+            vec![DecodedArg {
+                name: String::new(),
+                ty: "bytes".to_string(),
+                value: hex::encode(calldata),
+            }]
+        }
+    });
+    Some((func.name.clone(), args))
 }
 
 /// Decode calldata against the ABI. Returns (function_name, decoded_args) or None.
@@ -104,9 +54,6 @@ pub fn decode_input(abi: &JsonAbi, input: &[u8]) -> Option<(String, Vec<DecodedA
 }
 
 /// Decode precompile calldata that has no 4-byte selector prefix.
-/// Tries standard ABI tuple decoding first (works for ecrecover, ecadd, ecmul whose
-/// inputs are packed 32-byte words). Falls back to wrapping a single `bytes` input
-/// as raw hex for precompiles that receive arbitrary byte strings (sha256, identity, …).
 pub fn decode_raw_input(abi: &JsonAbi, fn_name: &str, input: &[u8]) -> Option<Vec<DecodedArg>> {
     let func = abi.functions().find(|f| f.name == fn_name)?;
 
@@ -114,7 +61,6 @@ pub fn decode_raw_input(abi: &JsonAbi, fn_name: &str, input: &[u8]) -> Option<Ve
         return Some(decoded);
     }
 
-    // Single `bytes` param → wrap raw calldata directly (no ABI length prefix expected)
     if func.inputs.len() == 1 && func.inputs[0].ty == "bytes" {
         return Some(vec![DecodedArg {
             name: func.inputs[0].name.clone(),
@@ -160,8 +106,6 @@ pub fn decode_event(
             if input.indexed {
                 let val = match topics.get(topic_idx) {
                     Some(topic_bytes) => {
-                        // For static types, the topic is ABI-encoded (padded to 32 bytes).
-                        // For dynamic types (bytes, string, arrays), it's a keccak256 hash.
                         match resolve_event_param_type(input)
                             .and_then(|ty| ty.abi_decode(topic_bytes).ok())
                         {
@@ -176,7 +120,6 @@ pub fn decode_event(
             }
         }
 
-        // Non-indexed params are ABI-encoded in data
         let non_indexed: Vec<Param> = event
             .inputs
             .iter()
@@ -244,7 +187,6 @@ fn try_decode_params(params: &[Param], data: &[u8]) -> Option<Vec<DecodedArg>> {
 fn resolve_param_type(param: &Param) -> Option<DynSolType> {
     let ty = param.ty.as_str();
 
-    // Handle tuple and tuple arrays
     if ty == "tuple" || ty.starts_with("tuple[") {
         let inner: Vec<DynSolType> = param
             .components
@@ -258,7 +200,6 @@ fn resolve_param_type(param: &Param) -> Option<DynSolType> {
         if ty == "tuple" {
             return Some(tuple);
         }
-        // tuple[] or tuple[N]
         let suffix = &ty[5..];
         return if suffix == "[]" {
             Some(DynSolType::Array(Box::new(tuple)))
@@ -268,7 +209,6 @@ fn resolve_param_type(param: &Param) -> Option<DynSolType> {
         };
     }
 
-    // All other types can be parsed directly
     ty.parse().ok()
 }
 

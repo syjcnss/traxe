@@ -1,7 +1,7 @@
 use anyhow::Result;
 use std::io;
 
-use crate::ir::Node;
+use crate::tree::Node;
 use super::{Printer, PrintContext};
 
 pub struct HtmlPrinter {
@@ -123,6 +123,14 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
       return s.length > max ? s.slice(0, max) + '…' : s;
     }
 
+    function isTransparentDelegate(node) {
+      const callChildren = (node.children || []).filter(c => c.type === 'call');
+      if (callChildren.length !== 1) return false;
+      const delegate = callChildren[0];
+      if (delegate.call_type !== 'DELEGATECALL') return false;
+      return node.input === delegate.input && node.output === delegate.output;
+    }
+
     // ── small components ─────────────────────────────────────────────────────
 
     function CallTypeBadge({ callType }) {
@@ -242,10 +250,11 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
       const targetLabel = node.contract_label || node.to || node.from;
       const showAddr    = !!(node.contract_label && node.to);
 
-      const hasDecodedIn  = node.decoded_input  && node.decoded_input.length  > 0;
-      const hasDecodedOut = node.decoded_output && node.decoded_output.length > 0;
-      const hasRawIn      = showRawData;
-      const hasRawOut     = showRawData;
+      const skipIO        = isTransparentDelegate(node);
+      const hasDecodedIn  = !skipIO && node.decoded_input  && node.decoded_input.length  > 0;
+      const hasDecodedOut = !skipIO && node.decoded_output && node.decoded_output.length > 0;
+      const hasRawIn      = !skipIO && showRawData;
+      const hasRawOut     = !skipIO && showRawData;
       const rawIn         = (input && input !== '') ? input : '0x';
       const rawOut        = (node.output && node.output !== '') ? node.output : '0x';
 
@@ -299,8 +308,8 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
           {hasContent && open && (
             <div className="pl-4 ml-2.5 border-l border-zinc-200 dark:border-zinc-800">
               {hasRawIn      && <RawDataSection label="raw input"      hex={rawIn} />}
-              {hasRawOut     && <RawDataSection label="raw output"     hex={rawOut} />}
               {hasDecodedIn  && <ArgsSection    label="decoded input"  args={node.decoded_input} />}
+              {hasRawOut     && <RawDataSection label="raw output"     hex={rawOut} />}
               {hasDecodedOut && <ArgsSection    label="decoded output" args={node.decoded_output} />}
 
               {visibleChildren.map((child, i) =>

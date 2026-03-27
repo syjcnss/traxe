@@ -8,7 +8,7 @@ Given a transaction hash, the tool:
 1. Fetches the call trace from a trace provider (RPC, Dune, Blockscout, or simulator)
 2. Resolves contract source code and ABIs to decode function calls
 3. Resolves contract labels/tags from Etherscan/Blockscout
-4. Outputs either raw JSON or a human-readable tree with decoded args and return values
+4. Outputs either raw JSON or a human-readable call tree with decoded args and return values
 
 At startup the tool prints which providers are enabled and what enables each one.
 
@@ -35,11 +35,12 @@ Options:
       --rpc <URL>                                         RPC endpoint URL
       --blockscout <URL>                                  Blockscout explorer endpoint URL
       --trace-provider <rpc|dune|blockscout|simulator>    Force a specific trace provider
-      --printer <json|tree|html>                          Printer to use for output (default: tree)
+      --printer <json|text|html>                          Printer to use for output (default: text)
   -o, --output <FILE>                                     Write output to a file instead of stdout
-      --tree-raw-data                                     Show raw hex call input and return data [tree printer only]
-      --tree-no-events                                    Hide emitted events (logs) [tree printer only]
-      --no-color                                          Disable colored output
+      --text-raw-data                                     Show raw hex call input and return data [text printer only]
+      --text-no-events                                    Hide emitted events (logs) [text printer only]
+      --text-show-gas                                     Show gas usage [text printer only]
+      --text-no-color                                     Disable colored output [text printer only]
   -d, --debug                                             Enable debug logging
   -h, --help                                              Print help
   -V, --version                                           Print version
@@ -83,7 +84,7 @@ Resolved in order from: ERC-20 `symbol()` via RPC, Etherscan contract name, Bloc
 
 ## Output Formats
 
-**Tree** (default) — human-readable hierarchical call tree:
+**Text** (default) — human-readable hierarchical call tree:
 ```
 TransferHelper::safeTransferFrom(token=0xA0b..., from=0x123..., to=0x456..., value=1000000000)
 ├── ERC20::transferFrom(sender=0x123..., recipient=0x456..., amount=1000000000) → true

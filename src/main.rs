@@ -24,10 +24,6 @@ async fn main() -> Result<()> {
     }
     env_logger::init();
 
-    if cli.tree.no_color {
-        colored::control::set_override(false);
-    }
-
     // Resolve chain: parse --chain if provided, otherwise require it when --rpc is absent
     let chain = match &cli.chain {
         Some(s) => chains::parse(s)?,
@@ -104,20 +100,20 @@ async fn main() -> Result<()> {
         apply_fourbyte_names(&mut root, &fourbyte);
     }
 
-    let native_symbol = chains::native_symbol(chain_id);
+    let ctx = printer::PrintContext {
+        tx_hash: cli.tx_hash.clone(),
+        native_symbol: chains::native_symbol(chain_id).to_string(),
+        config: printer::PrinterConfig {
+            tree: cli.tree,
+        },
+    };
 
     // --- 6. Build IR and print ---
     let ir_root = ir::Node::from(root);
     let p: Box<dyn Printer> = match cli.printer {
-        PrinterKind::Json => Box::new(printer::json::JsonPrinter::new()),
-        PrinterKind::Tree => Box::new(printer::tree::TreePrinter::new(
-            native_symbol.to_string(),
-            &cli.tree,
-        )),
-        PrinterKind::Html => Box::new(printer::html::HtmlPrinter::new(
-            cli.tx_hash.clone(),
-            native_symbol.to_string(),
-        )),
+        PrinterKind::Json => Box::new(printer::json::JsonPrinter::new(&ctx)),
+        PrinterKind::Tree => Box::new(printer::tree::TreePrinter::new(&ctx)),
+        PrinterKind::Html => Box::new(printer::html::HtmlPrinter::new(&ctx)),
     };
 
     let output_path = cli.output.clone().or_else(|| {

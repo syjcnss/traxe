@@ -2,10 +2,9 @@ use anyhow::Result;
 use colored::Colorize;
 use std::io;
 
-use crate::cli::TreeArgs;
 use crate::ir::{CallNode, EventNode, Node};
 use crate::types::{CallType, DecodedArg};
-use super::Printer;
+use super::{Printer, PrintContext};
 
 pub struct TreePrinter {
     native_symbol: String,
@@ -15,12 +14,15 @@ pub struct TreePrinter {
 }
 
 impl TreePrinter {
-    pub fn new(native_symbol: String, args: &TreeArgs) -> Self {
+    pub fn new(ctx: &PrintContext) -> Self {
+        if ctx.config.tree.no_color {
+            colored::control::set_override(false);
+        }
         Self {
-            native_symbol,
-            raw_data: args.raw_data,
-            show_events: !args.no_events,
-            show_gas: args.show_gas,
+            native_symbol: ctx.native_symbol.clone(),
+            raw_data: ctx.config.tree.raw_data,
+            show_events: !ctx.config.tree.no_events,
+            show_gas: ctx.config.tree.show_gas,
         }
     }
 }

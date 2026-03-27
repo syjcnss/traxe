@@ -2,12 +2,12 @@ use anyhow::Result;
 use std::io;
 
 use crate::ir::Node;
-use super::Printer;
+use super::{Printer, PrintContext};
 
 pub struct JsonPrinter;
 
 impl JsonPrinter {
-    pub fn new() -> Self {
+    pub fn new(_ctx: &PrintContext) -> Self {
         Self
     }
 }

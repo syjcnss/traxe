@@ -6,7 +6,19 @@ use anyhow::Result;
 use std::io;
 use std::path::PathBuf;
 
+use crate::cli::TreeConfig;
 use crate::ir::Node;
+
+pub struct PrinterConfig {
+    pub tree: TreeConfig,
+}
+
+/// Common context available to all printers.
+pub struct PrintContext {
+    pub tx_hash: String,
+    pub native_symbol: String,
+    pub config: PrinterConfig,
+}
 
 pub trait Printer {
     fn print(&self, root: &Node, out: &mut dyn io::Write) -> Result<()>;

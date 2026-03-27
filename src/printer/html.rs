@@ -2,7 +2,7 @@ use anyhow::Result;
 use std::io;
 
 use crate::ir::Node;
-use super::Printer;
+use super::{Printer, PrintContext};
 
 pub struct HtmlPrinter {
     tx_hash: String,
@@ -10,8 +10,11 @@ pub struct HtmlPrinter {
 }
 
 impl HtmlPrinter {
-    pub fn new(tx_hash: String, native_symbol: String) -> Self {
-        Self { tx_hash, native_symbol }
+    pub fn new(ctx: &PrintContext) -> Self {
+        Self {
+            tx_hash: ctx.tx_hash.clone(),
+            native_symbol: ctx.native_symbol.clone(),
+        }
     }
 }
 

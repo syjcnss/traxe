@@ -41,7 +41,13 @@ pub struct Cli {
     pub output: Option<PathBuf>,
 
     #[command(flatten)]
-    pub tree: TreeArgs,
+    pub tree: TreeConfig,
+
+    #[command(flatten)]
+    pub html: HtmlConfig,
+
+    #[command(flatten)]
+    pub json: JsonConfig,
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]
@@ -59,22 +65,30 @@ pub enum PrinterKind {
     Html,
 }
 
-#[derive(Args, Debug)]
-#[command(next_help_heading = "Printer Options")]
-pub struct TreeArgs {
-    /// Show raw call input and return data (hex) [tree printer only]
+#[derive(Args, Debug, Clone)]
+#[command(next_help_heading = "Tree Printer Options")]
+pub struct TreeConfig {
+    /// Show raw call input and return data (hex)
     #[arg(long = "tree-raw-data")]
     pub raw_data: bool,
 
-    /// Hide emitted events (logs) [tree printer only]
+    /// Hide emitted events (logs)
     #[arg(long = "tree-no-events")]
     pub no_events: bool,
 
-    /// Show gas usage [tree printer only]
+    /// Show gas usage
     #[arg(long = "tree-show-gas")]
     pub show_gas: bool,
 
-    /// Disable colored output [tree printer only]
+    /// Disable colored output
     #[arg(long = "tree-no-color")]
     pub no_color: bool,
 }
+
+#[derive(Args, Debug, Clone)]
+#[command(next_help_heading = "HTML Printer Options")]
+pub struct HtmlConfig {}
+
+#[derive(Args, Debug, Clone)]
+#[command(next_help_heading = "JSON Printer Options")]
+pub struct JsonConfig {}

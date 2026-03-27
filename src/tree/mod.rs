@@ -430,8 +430,28 @@ fn apply_eightbyte_event_names(node: &mut Node, events: &HashMap<String, Event>)
                         .collect();
                     let data =
                         hex::decode(ev.data.trim_start_matches("0x")).unwrap_or_default();
+
+                    // Eightbyte signatures don't encode `indexed` markers — all params come
+                    // back as indexed=false. Infer which params are indexed by counting extra
+                    // topics: the first `num_extra_topics` params must be indexed.
+                    let all_non_indexed = event_def.inputs.iter().all(|i| !i.indexed);
+                    let num_indexed = raw_topics.len().saturating_sub(1);
+                    let patched: Option<Event> = if all_non_indexed
+                        && num_indexed > 0
+                        && num_indexed <= event_def.inputs.len()
+                    {
+                        let mut cloned = event_def.clone();
+                        for (i, input) in cloned.inputs.iter_mut().enumerate() {
+                            input.indexed = i < num_indexed;
+                        }
+                        Some(cloned)
+                    } else {
+                        None
+                    };
+                    let resolved = patched.as_ref().unwrap_or(event_def);
+
                     if let Some((name, args)) =
-                        decode::decode_event_from_def(event_def, &raw_topics, &data)
+                        decode::decode_event_from_def(resolved, &raw_topics, &data)
                     {
                         ev.event_name = Some(name);
                         ev.decoded_args = Some(args);

@@ -160,7 +160,10 @@ fn print_event(out: &mut dyn io::Write, event: &EventNode, prefix: &str, is_last
     write!(out, "{}", "EVENT".bright_yellow().bold())?;
 
     let event_label = if let Some(name) = &event.event_name {
-        name.bright_green().bold().to_string()
+        let topic0_suffix = event.topics.first().map(|t| {
+            format!(" {}", format!("(0x{})", t.trim_start_matches("0x")).bright_black())
+        }).unwrap_or_default();
+        format!("{}{}", name.bright_green().bold(), topic0_suffix)
     } else if let Some(topic0) = event.topics.first() {
         format!("0x{}", topic0.trim_start_matches("0x"))
             .bright_black()

@@ -35,9 +35,10 @@ Options:
       --rpc <URL>                                         RPC endpoint URL
       --blockscout <URL>                                  Blockscout explorer endpoint URL
       --trace-provider <rpc|dune|blockscout|simulator>    Force a specific trace provider
-      --output <json|tree>                                Output format (default: tree)
-      --raw-data                                          Show raw hex call input and return data in tree output
-      --no-events                                         Hide emitted events (logs) in tree output
+      --printer <json|tree|html>                          Printer to use for output (default: tree)
+  -o, --output <FILE>                                     Write output to a file instead of stdout
+      --tree-raw-data                                     Show raw hex call input and return data [tree printer only]
+      --tree-no-events                                    Hide emitted events (logs) [tree printer only]
       --no-color                                          Disable colored output
   -d, --debug                                             Enable debug logging
   -h, --help                                              Print help
@@ -90,3 +91,5 @@ TransferHelper::safeTransferFrom(token=0xA0b..., from=0x123..., to=0x456..., val
 ```
 
 **JSON** — raw call trace as returned by the trace provider.
+
+**HTML** — self-contained interactive HTML file. Defaults to writing `<tx_hash>.html` in the current directory; override with `-o <file>`.

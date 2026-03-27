@@ -1,4 +1,5 @@
-use clap::{Parser, ValueEnum};
+use clap::{Args, Parser, ValueEnum};
+use std::path::PathBuf;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -27,21 +28,20 @@ pub struct Cli {
     #[arg(long, value_enum)]
     pub trace_provider: Option<TraceProvider>,
 
-    /// Output format
+    /// Printer to use for output
     #[arg(long, value_enum, default_value = "tree")]
-    pub output: OutputFormat,
+    pub printer: PrinterKind,
 
     /// Disable colored output
     #[arg(long)]
     pub no_color: bool,
 
-    /// Show raw call input and return data (hex) in tree output
-    #[arg(long)]
-    pub raw_data: bool,
+    #[command(flatten)]
+    pub tree: TreeArgs,
 
-    /// Hide emitted events (logs) in tree output
-    #[arg(long)]
-    pub no_events: bool,
+    /// Write output to a file instead of stdout
+    #[arg(short = 'o', long, value_name = "FILE")]
+    pub output: Option<PathBuf>,
 
     /// Enable debug logging
     #[arg(long, short = 'd')]
@@ -57,7 +57,19 @@ pub enum TraceProvider {
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]
-pub enum OutputFormat {
+pub enum PrinterKind {
     Json,
     Tree,
+    Html,
+}
+
+#[derive(Args, Debug)]
+pub struct TreeArgs {
+    /// Show raw call input and return data (hex) [tree printer only]
+    #[arg(long = "tree-raw-data")]
+    pub raw_data: bool,
+
+    /// Hide emitted events (logs) [tree printer only]
+    #[arg(long = "tree-no-events")]
+    pub no_events: bool,
 }

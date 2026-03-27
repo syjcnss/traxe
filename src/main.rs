@@ -2,15 +2,18 @@ mod abi;
 mod chainlist;
 mod chains;
 mod cli;
+mod ir;
 mod label;
-mod output;
+mod printer;
 mod provider;
 mod trace;
 mod types;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use cli::{Cli, OutputFormat, TraceProvider};
+use cli::{Cli, PrinterKind, TraceProvider};
+use std::path::PathBuf;
+use printer::Printer;
 use std::collections::HashMap;
 
 #[tokio::main]
@@ -104,10 +107,42 @@ async fn main() -> Result<()> {
 
     let native_symbol = chains::native_symbol(chain_id);
 
-    // --- 6. Output ---
-    match cli.output {
-        OutputFormat::Json => output::json::print(&root)?,
-        OutputFormat::Tree => output::tree::print(&root, native_symbol, cli.raw_data, !cli.no_events),
+    // --- 6. Build IR and print ---
+    let ir_root = ir::Node::from(root);
+    let p: Box<dyn Printer> = match cli.printer {
+        PrinterKind::Json => Box::new(printer::json::JsonPrinter),
+        PrinterKind::Tree => Box::new(printer::tree::TreePrinter::new(
+            native_symbol.to_string(),
+            &cli.tree,
+        )),
+        PrinterKind::Html => Box::new(printer::html::HtmlPrinter {
+            tx_hash: cli.tx_hash.clone(),
+            native_symbol: native_symbol.to_string(),
+        }),
+    };
+
+    // For the HTML printer, default to <tx_hash>.html when no -o is given.
+    let output_path: Option<PathBuf> = cli.output.clone().or_else(|| {
+        if cli.printer == PrinterKind::Html {
+            Some(PathBuf::from(format!("{}.html", cli.tx_hash)))
+        } else {
+            None
+        }
+    });
+
+    if let Some(path) = &output_path {
+        // Disable colors when writing to a file (unless already forced off)
+        if !cli.no_color {
+            colored::control::set_override(false);
+        }
+        let mut file = std::fs::File::create(path)
+            .with_context(|| format!("failed to create output file: {}", path.display()))?;
+        p.print(&ir_root, &mut file)?;
+        if cli.printer == PrinterKind::Html {
+            eprintln!("HTML trace written to {}", path.display());
+        }
+    } else {
+        p.print(&ir_root, &mut std::io::stdout())?;
     }
 
     Ok(())

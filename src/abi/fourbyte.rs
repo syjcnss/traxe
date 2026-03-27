@@ -16,12 +16,19 @@ pub async fn lookup_selectors(
         "https://api.4byte.sourcify.dev/signature-database/v1/lookup?function={query}&filter=true"
     );
 
+    log::debug!("4byte: looking up {} selectors", selectors.len());
     let resp: serde_json::Value = match http.get(&url).send().await {
         Ok(r) => match r.json().await {
             Ok(v) => v,
-            Err(_) => return HashMap::new(),
+            Err(e) => {
+                log::debug!("4byte: response parse failed: {}", e);
+                return HashMap::new();
+            }
         },
-        Err(_) => return HashMap::new(),
+        Err(e) => {
+            log::debug!("4byte: request failed: {}", e);
+            return HashMap::new();
+        }
     };
 
     // Response: { "ok": true, "result": { "function": { "0x18cbafe5": [{ "name": "swapExactTokensForETH(...)" }] } } }

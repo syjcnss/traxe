@@ -23,40 +23,39 @@ pub async fn resolve_abis(
         let lower = addr.to_lowercase();
 
         // 1. Sourcify
-        if let Ok(abi) = sourcify::fetch_abi(http, &lower, chain_id).await {
-            result.insert(
-                lower.clone(),
-                ResolvedAbi {
-                    abi,
-                    contract_name: None,
-                },
-            );
-            continue;
+        log::debug!("abi: trying Sourcify for {}", lower);
+        match sourcify::fetch_abi(http, &lower, chain_id).await {
+            Ok(abi) => {
+                log::debug!("abi: Sourcify hit for {}", lower);
+                result.insert(lower.clone(), ResolvedAbi { abi, contract_name: None });
+                continue;
+            }
+            Err(e) => log::debug!("abi: Sourcify miss for {}: {}", lower, e),
         }
 
         // 2. Etherscan
-        if let Ok((abi, name)) = etherscan::fetch_abi(http, &lower, chain_id).await {
-            result.insert(
-                lower.clone(),
-                ResolvedAbi {
-                    abi,
-                    contract_name: name,
-                },
-            );
-            continue;
+        log::debug!("abi: trying Etherscan for {}", lower);
+        match etherscan::fetch_abi(http, &lower, chain_id).await {
+            Ok((abi, name)) => {
+                log::debug!("abi: Etherscan hit for {} (contract_name={:?})", lower, name);
+                result.insert(lower.clone(), ResolvedAbi { abi, contract_name: name });
+                continue;
+            }
+            Err(e) => log::debug!("abi: Etherscan miss for {}: {}", lower, e),
         }
 
         // 3. Blockscout (if URL configured via env)
         if let Ok(bs_url) = std::env::var("BLOCKSCOUT_URL") {
-            if let Ok(abi) = blockscout::fetch_abi(http, &bs_url, &lower).await {
-                result.insert(
-                    lower.clone(),
-                    ResolvedAbi {
-                        abi,
-                        contract_name: None,
-                    },
-                );
+            log::debug!("abi: trying Blockscout for {}", lower);
+            match blockscout::fetch_abi(http, &bs_url, &lower).await {
+                Ok(abi) => {
+                    log::debug!("abi: Blockscout hit for {}", lower);
+                    result.insert(lower.clone(), ResolvedAbi { abi, contract_name: None });
+                }
+                Err(e) => log::debug!("abi: Blockscout miss for {}: {}", lower, e),
             }
+        } else {
+            log::debug!("abi: skipping Blockscout for {} (BLOCKSCOUT_URL not set)", lower);
         }
     }
 

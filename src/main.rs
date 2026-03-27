@@ -49,13 +49,27 @@ async fn main() -> Result<()> {
 
     let http = reqwest::Client::new();
 
+    // If --chain was not provided, query the RPC for the actual chain ID.
+    let chain_id = if cli.chain.is_none() {
+        if let Some(url) = rpc_url.as_deref() {
+            let id = trace::rpc::fetch_chain_id(&http, url).await
+                .context("failed to fetch chain ID from RPC; use --chain/-c to specify it")?;
+            log::debug!("chain ID from RPC: {}", id);
+            id
+        } else {
+            chain_id
+        }
+    } else {
+        chain_id
+    };
+
     // --- 1. Fetch trace ---
     log::debug!("fetching trace for {} on chain {}", cli.tx_hash, chain_id);
     let root = fetch_trace(&cli, &http, rpc_url.as_deref(), chain_id).await?;
 
     // --- 2. Collect all unique addresses ---
     let addresses = collect_addresses(&root);
-    log::debug!("collected {} unique addresses", addresses.len());
+    log::debug!("collected {} unique addresses: {}", addresses.len(), addresses.join(", "));
 
     // --- 3. Resolve ABIs ---
     log::debug!("resolving ABIs for {} addresses", addresses.len());
@@ -118,30 +132,45 @@ async fn fetch_trace(
             // Priority: RPC → Dune → Blockscout → simulate
             if let Some(url) = rpc_url {
                 log::debug!("trying RPC trace ({})", url);
-                if let Ok(frame) = trace::rpc::fetch(http, url, &cli.tx_hash).await {
-                    log::debug!("RPC trace succeeded");
-                    return Ok(frame);
+                match trace::rpc::fetch(http, url, &cli.tx_hash).await {
+                    Ok(frame) => {
+                        log::debug!("RPC trace succeeded");
+                        return Ok(frame);
+                    }
+                    Err(e) => {
+                        log::debug!("RPC trace failed: {}", e);
+                        eprintln!("RPC trace failed, trying Dune...");
+                    }
                 }
-                eprintln!("RPC trace failed, trying Dune...");
             }
 
             let dune_key = std::env::var("DUNE_API_KEY").ok();
             if dune_key.is_some() {
                 log::debug!("trying Dune trace");
-                if let Ok(frame) = trace::dune::fetch(http, &cli.tx_hash, chain_id).await {
-                    log::debug!("Dune trace succeeded");
-                    return Ok(frame);
+                match trace::dune::fetch(http, &cli.tx_hash, chain_id).await {
+                    Ok(frame) => {
+                        log::debug!("Dune trace succeeded");
+                        return Ok(frame);
+                    }
+                    Err(e) => {
+                        log::debug!("Dune trace failed: {}", e);
+                        eprintln!("Dune trace failed, trying Blockscout...");
+                    }
                 }
-                eprintln!("Dune trace failed, trying Blockscout...");
             }
 
             if let Some(url) = cli.blockscout.as_deref() {
                 log::debug!("trying Blockscout trace ({})", url);
-                if let Ok(frame) = trace::blockscout::fetch(http, url, &cli.tx_hash).await {
-                    log::debug!("Blockscout trace succeeded");
-                    return Ok(frame);
+                match trace::blockscout::fetch(http, url, &cli.tx_hash).await {
+                    Ok(frame) => {
+                        log::debug!("Blockscout trace succeeded");
+                        return Ok(frame);
+                    }
+                    Err(e) => {
+                        log::debug!("Blockscout trace failed: {}", e);
+                        eprintln!("Blockscout trace failed, falling back to simulation...");
+                    }
                 }
-                eprintln!("Blockscout trace failed, falling back to simulation...");
             }
 
             eprintln!("Warning: falling back to local simulation — trace may be inaccurate");

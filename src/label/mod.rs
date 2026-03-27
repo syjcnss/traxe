@@ -15,23 +15,40 @@ pub async fn resolve_labels(
 
         // Try on-chain ERC20 name() first
         if let Some(rpc) = rpc_url {
-            if let Ok(name) = fetch_erc20_name(http, rpc, &lower).await {
-                labels.insert(lower, name);
-                continue;
+            log::debug!("label: trying ERC20 symbol() for {}", lower);
+            match fetch_erc20_name(http, rpc, &lower).await {
+                Ok(name) => {
+                    log::debug!("label: ERC20 symbol hit for {}: {}", lower, name);
+                    labels.insert(lower, name);
+                    continue;
+                }
+                Err(e) => log::debug!("label: ERC20 symbol miss for {}: {}", lower, e),
             }
         }
 
         // Try Etherscan contract name
-        if let Ok(name) = fetch_etherscan_label(http, &lower, chain_id).await {
-            labels.insert(lower.clone(), name);
-            continue;
+        log::debug!("label: trying Etherscan for {}", lower);
+        match fetch_etherscan_label(http, &lower, chain_id).await {
+            Ok(name) => {
+                log::debug!("label: Etherscan hit for {}: {}", lower, name);
+                labels.insert(lower.clone(), name);
+                continue;
+            }
+            Err(e) => log::debug!("label: Etherscan miss for {}: {}", lower, e),
         }
 
         // Try Blockscout
         if let Some(bs_url) = std::env::var("BLOCKSCOUT_URL").ok() {
-            if let Ok(name) = fetch_blockscout_label(http, &bs_url, &lower).await {
-                labels.insert(lower, name);
+            log::debug!("label: trying Blockscout for {}", lower);
+            match fetch_blockscout_label(http, &bs_url, &lower).await {
+                Ok(name) => {
+                    log::debug!("label: Blockscout hit for {}: {}", lower, name);
+                    labels.insert(lower, name);
+                }
+                Err(e) => log::debug!("label: Blockscout miss for {}: {}", lower, e),
             }
+        } else {
+            log::debug!("label: skipping Blockscout for {} (BLOCKSCOUT_URL not set)", lower);
         }
     }
 

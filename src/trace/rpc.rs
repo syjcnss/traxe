@@ -3,6 +3,35 @@ use serde_json::{json, Value};
 
 use crate::types::{CallFrame, CallType, Log};
 
+pub async fn fetch_chain_id(http: &reqwest::Client, rpc_url: &str) -> Result<u64> {
+    let body = serde_json::json!({
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "eth_chainId",
+        "params": []
+    });
+
+    log::debug!("rpc: POST eth_chainId to {}", rpc_url);
+    let resp: serde_json::Value = http
+        .post(rpc_url)
+        .json(&body)
+        .send()
+        .await
+        .context("RPC request failed")?
+        .json()
+        .await
+        .context("RPC response parse failed")?;
+
+    let hex = resp
+        .get("result")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow!("eth_chainId response missing 'result'"))?;
+
+    let id = u64::from_str_radix(hex.trim_start_matches("0x"), 16)
+        .context("eth_chainId: invalid hex")?;
+    Ok(id)
+}
+
 pub async fn fetch(
     http: &reqwest::Client,
     rpc_url: &str,
@@ -15,6 +44,7 @@ pub async fn fetch(
         "params": [tx_hash, {"tracer": "callTracer", "tracerConfig": {"withLog": true}}]
     });
 
+    log::debug!("rpc: POST debug_traceTransaction {} to {}", tx_hash, rpc_url);
     let resp: Value = http
         .post(rpc_url)
         .json(&body)
@@ -33,7 +63,10 @@ pub async fn fetch(
         .get("result")
         .ok_or_else(|| anyhow!("RPC response missing 'result'"))?;
 
-    parse_call_tracer_frame(result)
+    log::debug!("rpc: parsing call tracer frame");
+    let frame = parse_call_tracer_frame(result)?;
+    log::debug!("rpc: parsed {} top-level subcalls", frame.calls.len());
+    Ok(frame)
 }
 
 pub fn parse_minimal_frame(v: &Value) -> Result<CallFrame> {

@@ -89,6 +89,7 @@ pub async fn fetch(
         ORDER BY trace_address"
     );
 
+    log::debug!("dune: executing SQL for {} on chain {} ({})", tx_hash, chain_id, chain);
     // Execute SQL
     let exec_resp: Value = http
         .post("https://api.dune.com/api/v1/sql/execute")
@@ -107,6 +108,7 @@ pub async fn fetch(
         .ok_or_else(|| anyhow!("Dune: no execution_id in response: {}", exec_resp))?
         .to_string();
 
+    log::debug!("dune: execution_id={}, polling for results", execution_id);
     // Poll for completion
     let results = poll_and_fetch(http, &api_key, &execution_id).await?;
 
@@ -120,6 +122,7 @@ pub async fn fetch(
         return Err(anyhow!("Dune: no traces found for tx {}", tx_hash));
     }
 
+    log::debug!("dune: got {} trace rows, building call tree", rows.len());
     build_tree(rows)
 }
 
@@ -147,11 +150,15 @@ async fn poll_and_fetch(
             .unwrap_or("");
 
         match state {
-            "QUERY_STATE_COMPLETED" => break,
+            "QUERY_STATE_COMPLETED" => {
+                log::debug!("dune: execution {} completed", execution_id);
+                break;
+            }
             "QUERY_STATE_FAILED" | "QUERY_STATE_CANCELLED" | "QUERY_STATE_EXPIRED" => {
                 return Err(anyhow!("Dune execution {}: state={}", execution_id, state));
             }
             _ => {
+                log::debug!("dune: execution {} state={}, waiting...", execution_id, state);
                 tokio::time::sleep(Duration::from_secs(2)).await;
             }
         }

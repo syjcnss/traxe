@@ -1,20 +1,22 @@
 use std::collections::HashMap;
 
+use crate::provider::Providers;
+
 /// Resolve human-readable labels for addresses from Etherscan, Blockscout, or ERC20 `name()`.
 /// Returns a map of lowercase address -> label string.
 pub async fn resolve_labels(
     http: &reqwest::Client,
     addresses: &[String],
     chain_id: u64,
-    rpc_url: Option<&str>,
+    providers: &Providers,
 ) -> HashMap<String, String> {
     let mut labels = HashMap::new();
 
     for addr in addresses {
         let lower = addr.to_lowercase();
 
-        // Try on-chain ERC20 name() first
-        if let Some(rpc) = rpc_url {
+        // Try on-chain ERC20 symbol() first (requires RPC)
+        if let Some(rpc) = &providers.rpc_url {
             log::debug!("label: trying ERC20 symbol() for {}", lower);
             match fetch_erc20_name(http, rpc, &lower).await {
                 Ok(name) => {
@@ -26,21 +28,25 @@ pub async fn resolve_labels(
             }
         }
 
-        // Try Etherscan contract name
-        log::debug!("label: trying Etherscan for {}", lower);
-        match fetch_etherscan_label(http, &lower, chain_id).await {
-            Ok(name) => {
-                log::debug!("label: Etherscan hit for {}: {}", lower, name);
-                labels.insert(lower.clone(), name);
-                continue;
+        // Try Etherscan contract name (requires ETHERSCAN_API_KEY)
+        if let Some(key) = &providers.etherscan_key {
+            log::debug!("label: trying Etherscan for {}", lower);
+            match fetch_etherscan_label(http, &lower, chain_id, key).await {
+                Ok(name) => {
+                    log::debug!("label: Etherscan hit for {}: {}", lower, name);
+                    labels.insert(lower.clone(), name);
+                    continue;
+                }
+                Err(e) => log::debug!("label: Etherscan miss for {}: {}", lower, e),
             }
-            Err(e) => log::debug!("label: Etherscan miss for {}: {}", lower, e),
+        } else {
+            log::debug!("label: skipping Etherscan for {} (ETHERSCAN_API_KEY not set)", lower);
         }
 
-        // Try Blockscout
-        if let Some(bs_url) = std::env::var("BLOCKSCOUT_URL").ok() {
+        // Try Blockscout (requires --blockscout / BLOCKSCOUT_URL)
+        if let Some(bs_url) = &providers.blockscout_url {
             log::debug!("label: trying Blockscout for {}", lower);
-            match fetch_blockscout_label(http, &bs_url, &lower).await {
+            match fetch_blockscout_label(http, bs_url, &lower).await {
                 Ok(name) => {
                     log::debug!("label: Blockscout hit for {}: {}", lower, name);
                     labels.insert(lower, name);
@@ -48,7 +54,7 @@ pub async fn resolve_labels(
                 Err(e) => log::debug!("label: Blockscout miss for {}: {}", lower, e),
             }
         } else {
-            log::debug!("label: skipping Blockscout for {} (BLOCKSCOUT_URL not set)", lower);
+            log::debug!("label: skipping Blockscout for {} (no blockscout URL)", lower);
         }
     }
 
@@ -59,10 +65,8 @@ async fn fetch_etherscan_label(
     http: &reqwest::Client,
     address: &str,
     chain_id: u64,
+    api_key: &str,
 ) -> anyhow::Result<String> {
-    let api_key = std::env::var("ETHERSCAN_API_KEY")
-        .unwrap_or_else(|_| "YourApiKeyToken".to_string());
-
     let url = format!(
         "https://api.etherscan.io/v2/api\
          ?module=contract&action=getsourcecode\

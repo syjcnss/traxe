@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use alloy_dyn_abi::{DynSolType, DynSolValue};
 use alloy_json_abi::{EventParam, JsonAbi, Param};
 
+use crate::provider::Providers;
 use crate::types::{DecodedArg, ResolvedAbi};
 
 /// Try to resolve ABIs for all addresses. Returns a map of lowercase address -> ResolvedAbi.
@@ -16,13 +17,14 @@ pub async fn resolve_abis(
     http: &reqwest::Client,
     addresses: &[String],
     chain_id: u64,
+    providers: &Providers,
 ) -> HashMap<String, ResolvedAbi> {
     let mut result = HashMap::new();
 
     for addr in addresses {
         let lower = addr.to_lowercase();
 
-        // 1. Sourcify
+        // 1. Sourcify (always available)
         log::debug!("abi: trying Sourcify for {}", lower);
         match sourcify::fetch_abi(http, &lower, chain_id).await {
             Ok(abi) => {
@@ -33,21 +35,25 @@ pub async fn resolve_abis(
             Err(e) => log::debug!("abi: Sourcify miss for {}: {}", lower, e),
         }
 
-        // 2. Etherscan
-        log::debug!("abi: trying Etherscan for {}", lower);
-        match etherscan::fetch_abi(http, &lower, chain_id).await {
-            Ok((abi, name)) => {
-                log::debug!("abi: Etherscan hit for {} (contract_name={:?})", lower, name);
-                result.insert(lower.clone(), ResolvedAbi { abi, contract_name: name });
-                continue;
+        // 2. Etherscan (requires ETHERSCAN_API_KEY)
+        if let Some(key) = &providers.etherscan_key {
+            log::debug!("abi: trying Etherscan for {}", lower);
+            match etherscan::fetch_abi(http, &lower, chain_id, key).await {
+                Ok((abi, name)) => {
+                    log::debug!("abi: Etherscan hit for {} (contract_name={:?})", lower, name);
+                    result.insert(lower.clone(), ResolvedAbi { abi, contract_name: name });
+                    continue;
+                }
+                Err(e) => log::debug!("abi: Etherscan miss for {}: {}", lower, e),
             }
-            Err(e) => log::debug!("abi: Etherscan miss for {}: {}", lower, e),
+        } else {
+            log::debug!("abi: skipping Etherscan for {} (ETHERSCAN_API_KEY not set)", lower);
         }
 
-        // 3. Blockscout (if URL configured via env)
-        if let Ok(bs_url) = std::env::var("BLOCKSCOUT_URL") {
+        // 3. Blockscout (requires --blockscout / BLOCKSCOUT_URL)
+        if let Some(bs_url) = &providers.blockscout_url {
             log::debug!("abi: trying Blockscout for {}", lower);
-            match blockscout::fetch_abi(http, &bs_url, &lower).await {
+            match blockscout::fetch_abi(http, bs_url, &lower).await {
                 Ok(abi) => {
                     log::debug!("abi: Blockscout hit for {}", lower);
                     result.insert(lower.clone(), ResolvedAbi { abi, contract_name: None });
@@ -55,7 +61,7 @@ pub async fn resolve_abis(
                 Err(e) => log::debug!("abi: Blockscout miss for {}: {}", lower, e),
             }
         } else {
-            log::debug!("abi: skipping Blockscout for {} (BLOCKSCOUT_URL not set)", lower);
+            log::debug!("abi: skipping Blockscout for {} (no blockscout URL)", lower);
         }
     }
 

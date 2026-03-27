@@ -5,10 +5,12 @@ A Rust CLI tool that fetches and visualizes EVM transaction call traces given a 
 ## Overview
 
 Given a transaction hash, the tool:
-1. Fetches the call trace from an RPC node or Blockscout
+1. Fetches the call trace from a trace provider (RPC, Dune, Blockscout, or simulator)
 2. Resolves contract source code and ABIs to decode function calls
 3. Resolves contract labels/tags from Etherscan/Blockscout
 4. Outputs either raw JSON or a human-readable tree with decoded args and return values
+
+At startup the tool prints which providers are enabled and what enables each one.
 
 ## Network Support
 
@@ -28,48 +30,55 @@ cargo install --path .
 trace-tx [OPTIONS] <TX_HASH>
 
 Options:
-  -c, --chain <name|id>                   Chain name or ID (e.g. ethereum, polygon, 1, 137).
-                                          Required when --rpc is not provided.
-      --rpc <URL>                         RPC endpoint URL
-      --blockscout <URL>                  Blockscout explorer endpoint URL
-      --trace-source <rpc|dune|blockscout>  Force a specific trace source
-      --output <json|tree>                Output format (default: tree)
-      --raw-data                          Show raw hex call input and return data in tree output
-  -h, --help                              Print help
-  -V, --version                           Print version
+  -c, --chain <name|id>                                   Chain name or ID (e.g. ethereum, polygon, 1, 137).
+                                                          Required when --rpc is not provided.
+      --rpc <URL>                                         RPC endpoint URL
+      --blockscout <URL>                                  Blockscout explorer endpoint URL
+      --trace-provider <rpc|dune|blockscout|simulator>    Force a specific trace provider
+      --output <json|tree>                                Output format (default: tree)
+      --raw-data                                          Show raw hex call input and return data in tree output
+      --no-events                                         Hide emitted events (logs) in tree output
+      --no-color                                          Disable colored output
+  -d, --debug                                             Enable debug logging
+  -h, --help                                              Print help
+  -V, --version                                           Print version
 ```
 
 If `--rpc` is not provided, `--chain`/`-c` is required. The tool will construct an Alchemy RPC URL using `ALCHEMY_API_KEY` and the given chain.
 
 ## Configuration
 
-API keys are read from environment variables:
+Providers are enabled by CLI flags and environment variables:
 
-| Variable | Used for |
-|---|---|
-| `ALCHEMY_API_KEY` | Auto-construct RPC URL from `--chain` |
-| `ETHERSCAN_API_KEY` | ABI and label resolution |
-| `BLOCKSCOUT_API_KEY` | ABI and label resolution |
-| `DUNE_API_KEY` | Dune trace source |
+| Provider | Enabled by | Used for |
+|---|---|---|
+| `sourcify` | always | ABI resolution |
+| `rpc` | `--rpc` or `ALCHEMY_API_KEY` | Trace fetching, ERC-20 label resolution |
+| `simulator` | `--rpc` or `ALCHEMY_API_KEY` | Fallback trace (may be inaccurate) |
+| `dune` | `DUNE_API_KEY` | Trace fetching |
+| `blockscout` | `--blockscout` or `BLOCKSCOUT_URL` | Trace fetching, ABI and label resolution |
+| `etherscan` | `ETHERSCAN_API_KEY` | ABI and label resolution |
 
-## Data Sources
+## Providers
 
-### Trace (auto-fallback order, or force with `--trace-source`)
+### Trace (auto-fallback order, or force with `--trace-provider`)
 
-1. **RPC** — `debug_traceTransaction` via `--rpc` or Alchemy
-2. **Dune** — queries `ethereum.traces` (or chain-specific table) via Dune Analytics API
-3. **Blockscout** — via `--blockscout` endpoint
-4. **Simulate** — local simulation (like `cast run`); prints a warning that the trace may be inaccurate
+1. **rpc** — `debug_traceTransaction` via `--rpc` or Alchemy
+2. **dune** — queries `ethereum.traces` (or chain-specific table) via Dune Analytics API
+3. **blockscout** — internal transactions via `--blockscout` endpoint
+4. **simulator** — local simulation (like `cast run`); prints a warning that the trace may be inaccurate
+
+Use `--trace-provider <name>` to skip the fallback chain and force a specific provider.
 
 ### ABI / Source code (auto-fallback order)
 
-1. **Sourcify** — free, no API key required
-2. **Etherscan**
-3. **Blockscout**
+1. **sourcify** — free, no API key required
+2. **etherscan** — requires `ETHERSCAN_API_KEY`
+3. **blockscout** — requires `--blockscout` or `BLOCKSCOUT_URL`
 
 ### Contract labels
 
-Resolved from Etherscan and/or Blockscout to show human-readable names instead of raw addresses.
+Resolved in order from: ERC-20 `symbol()` via RPC, Etherscan contract name, Blockscout tags/name.
 
 ## Output Formats
 
@@ -80,4 +89,4 @@ TransferHelper::safeTransferFrom(token=0xA0b..., from=0x123..., to=0x456..., val
 └── ...
 ```
 
-**JSON** — raw call trace as returned by the trace source.
+**JSON** — raw call trace as returned by the trace provider.

@@ -23,9 +23,9 @@ pub struct Cli {
     #[arg(short = 'c', long)]
     pub chain: Option<String>,
 
-    /// Force a specific trace source
+    /// Force a specific trace provider
     #[arg(long, value_enum)]
-    pub trace_source: Option<TraceSource>,
+    pub trace_provider: Option<TraceProvider>,
 
     /// Output format
     #[arg(long, value_enum, default_value = "tree")]
@@ -49,10 +49,11 @@ pub struct Cli {
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]
-pub enum TraceSource {
+pub enum TraceProvider {
     Rpc,
     Dune,
     Blockscout,
+    Simulator,
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]

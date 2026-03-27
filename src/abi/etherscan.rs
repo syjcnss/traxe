@@ -8,10 +8,8 @@ pub async fn fetch_abi(
     http: &reqwest::Client,
     address: &str,
     chain_id: u64,
+    api_key: &str,
 ) -> Result<(JsonAbi, Option<String>)> {
-    let api_key = std::env::var("ETHERSCAN_API_KEY")
-        .unwrap_or_else(|_| "YourApiKeyToken".to_string());
-
     let url = format!(
         "https://api.etherscan.io/v2/api\
          ?module=contract&action=getsourcecode\

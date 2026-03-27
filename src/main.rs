@@ -3,12 +3,13 @@ mod chains;
 mod cli;
 mod label;
 mod output;
+mod provider;
 mod trace;
 mod types;
 
 use anyhow::{Context, Result};
 use clap::Parser;
-use cli::{Cli, OutputFormat, TraceSource};
+use cli::{Cli, OutputFormat, TraceProvider};
 use std::collections::HashMap;
 
 #[tokio::main]
@@ -63,9 +64,13 @@ async fn main() -> Result<()> {
         chain_id
     };
 
+    // Build Providers and report what is available.
+    let providers = provider::Providers::new(rpc_url, cli.blockscout.clone());
+    providers.print_enabled();
+
     // --- 1. Fetch trace ---
     log::debug!("fetching trace for {} on chain {}", cli.tx_hash, chain_id);
-    let root = fetch_trace(&cli, &http, rpc_url.as_deref(), chain_id).await?;
+    let root = fetch_trace(&cli, &http, &providers, chain_id).await?;
 
     // --- 2. Collect all unique addresses ---
     let addresses = collect_addresses(&root);
@@ -73,12 +78,12 @@ async fn main() -> Result<()> {
 
     // --- 3. Resolve ABIs ---
     log::debug!("resolving ABIs for {} addresses", addresses.len());
-    let abis = abi::resolve_abis(&http, &addresses, chain_id).await;
+    let abis = abi::resolve_abis(&http, &addresses, chain_id, &providers).await;
     log::debug!("resolved {} ABIs", abis.len());
 
     // --- 4. Resolve labels ---
     log::debug!("resolving labels");
-    let labels = label::resolve_labels(&http, &addresses, chain_id, rpc_url.as_deref()).await;
+    let labels = label::resolve_labels(&http, &addresses, chain_id, &providers).await;
     log::debug!("resolved {} labels", labels.len());
 
     // --- 5. Decode + annotate trace ---
@@ -109,65 +114,69 @@ async fn main() -> Result<()> {
 async fn fetch_trace(
     cli: &Cli,
     http: &reqwest::Client,
-    rpc_url: Option<&str>,
+    providers: &provider::Providers,
     chain_id: u64,
 ) -> Result<types::CallFrame> {
-    match &cli.trace_source {
-        Some(TraceSource::Rpc) => {
-            let url = rpc_url.context("--rpc or ALCHEMY_API_KEY required for RPC trace source")?;
-            log::debug!("trace source: RPC ({})", url);
+    match &cli.trace_provider {
+        Some(TraceProvider::Rpc) => {
+            let url = providers.rpc_url.as_deref()
+                .context("--rpc or ALCHEMY_API_KEY required for rpc trace provider")?;
+            log::debug!("trace provider: rpc ({})", url);
             trace::rpc::fetch(http, url, &cli.tx_hash).await
         }
-        Some(TraceSource::Dune) => {
-            log::debug!("trace source: Dune");
+        Some(TraceProvider::Dune) => {
+            log::debug!("trace provider: dune");
             trace::dune::fetch(http, &cli.tx_hash, chain_id).await
         }
-        Some(TraceSource::Blockscout) => {
-            let url = cli.blockscout.as_deref()
-                .context("--blockscout required for Blockscout trace source")?;
-            log::debug!("trace source: Blockscout ({})", url);
+        Some(TraceProvider::Blockscout) => {
+            let url = providers.blockscout_url.as_deref()
+                .context("--blockscout or BLOCKSCOUT_URL required for blockscout trace provider")?;
+            log::debug!("trace provider: blockscout ({})", url);
             trace::blockscout::fetch(http, url, &cli.tx_hash).await
         }
+        Some(TraceProvider::Simulator) => {
+            log::debug!("trace provider: simulator");
+            trace::simulate::fetch(http, providers.rpc_url.as_deref(), &cli.tx_hash, chain_id).await
+        }
         None => {
-            // Priority: RPC → Dune → Blockscout → simulate
-            if let Some(url) = rpc_url {
-                log::debug!("trying RPC trace ({})", url);
+            // Auto-select: RPC → Dune → Blockscout → simulate
+            if let Some(url) = &providers.rpc_url {
+                log::debug!("trying rpc trace ({})", url);
                 match trace::rpc::fetch(http, url, &cli.tx_hash).await {
                     Ok(frame) => {
-                        log::debug!("RPC trace succeeded");
+                        log::debug!("rpc trace succeeded");
                         return Ok(frame);
                     }
                     Err(e) => {
-                        log::debug!("RPC trace failed: {}", e);
+                        log::debug!("rpc trace failed: {}", e);
                         eprintln!("RPC trace failed, trying Dune...");
                     }
                 }
             }
 
-            let dune_key = std::env::var("DUNE_API_KEY").ok();
-            if dune_key.is_some() {
-                log::debug!("trying Dune trace");
+            if providers.dune_key.is_some() {
+                log::debug!("trying dune trace");
                 match trace::dune::fetch(http, &cli.tx_hash, chain_id).await {
                     Ok(frame) => {
-                        log::debug!("Dune trace succeeded");
+                        log::debug!("dune trace succeeded");
                         return Ok(frame);
                     }
                     Err(e) => {
-                        log::debug!("Dune trace failed: {}", e);
+                        log::debug!("dune trace failed: {}", e);
                         eprintln!("Dune trace failed, trying Blockscout...");
                     }
                 }
             }
 
-            if let Some(url) = cli.blockscout.as_deref() {
-                log::debug!("trying Blockscout trace ({})", url);
+            if let Some(url) = &providers.blockscout_url {
+                log::debug!("trying blockscout trace ({})", url);
                 match trace::blockscout::fetch(http, url, &cli.tx_hash).await {
                     Ok(frame) => {
-                        log::debug!("Blockscout trace succeeded");
+                        log::debug!("blockscout trace succeeded");
                         return Ok(frame);
                     }
                     Err(e) => {
-                        log::debug!("Blockscout trace failed: {}", e);
+                        log::debug!("blockscout trace failed: {}", e);
                         eprintln!("Blockscout trace failed, falling back to simulation...");
                     }
                 }
@@ -175,7 +184,7 @@ async fn fetch_trace(
 
             eprintln!("Warning: falling back to local simulation — trace may be inaccurate");
             log::debug!("falling back to simulate");
-            trace::simulate::fetch(http, rpc_url, &cli.tx_hash, chain_id).await
+            trace::simulate::fetch(http, providers.rpc_url.as_deref(), &cli.tx_hash, chain_id).await
         }
     }
 }

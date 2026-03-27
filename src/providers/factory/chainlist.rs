@@ -1,7 +1,12 @@
+use std::time::{Duration, SystemTime};
+
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::providers::RpcProvider;
+
+const CACHE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+const CHAINLIST_URL: &str = "https://chainlist.org/rpcs.json";
 
 /// An RPC entry in the chainlist JSON — either a plain URL string or an object with a `url` field.
 #[derive(Deserialize)]
@@ -32,6 +37,38 @@ pub struct Chainlist {
     http: reqwest::Client,
 }
 
+/// Returns `~/.cache/traxe/chainlist.json` if HOME is set.
+fn cache_path() -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let mut path = std::path::PathBuf::from(home);
+    path.push(".cache/traxe/chainlist.json");
+    Some(path)
+}
+
+/// Returns cached bytes if the file exists and is younger than CACHE_TTL.
+fn load_fresh_cache(path: &std::path::Path) -> Option<Vec<u8>> {
+    let meta = std::fs::metadata(path).ok()?;
+    let age = SystemTime::now().duration_since(meta.modified().ok()?).ok()?;
+    if age > CACHE_TTL {
+        log::debug!("chainlist: cache is {:.0}h old, will refresh", age.as_secs_f64() / 3600.0);
+        return None;
+    }
+    log::debug!("chainlist: using cached chainlist ({:.0}h old)", age.as_secs_f64() / 3600.0);
+    std::fs::read(path).ok()
+}
+
+/// Saves bytes to the cache path, creating parent dirs as needed. Errors are non-fatal.
+fn save_cache(path: &std::path::Path, data: &[u8]) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(path, data) {
+        log::debug!("chainlist: failed to write cache: {}", e);
+    } else {
+        log::debug!("chainlist: saved to cache at {}", path.display());
+    }
+}
+
 impl Chainlist {
     pub fn new(http: reqwest::Client) -> Self {
         Self { http }
@@ -41,18 +78,33 @@ impl Chainlist {
     /// `debug_traceTransaction` for `tx_hash`. Returns a ready-to-use `RpcProvider`
     /// with the probe response cached so the first `fetch_trace` call is free.
     pub async fn find_working_rpc(&self, chain_id: u64, tx_hash: &str) -> Option<RpcProvider> {
-        log::debug!("chainlist: fetching RPC list from chainlist.org");
+        let cache = cache_path();
 
-        let resp = self.http
-            .get("https://chainlist.org/rpcs.json")
-            .send()
-            .await
-            .map_err(|e| log::debug!("chainlist: fetch failed: {}", e))
-            .ok()?;
+        // Try fresh cache first.
+        let raw: Vec<u8> = if let Some(bytes) = cache.as_deref().and_then(load_fresh_cache) {
+            bytes
+        } else {
+            log::debug!("chainlist: fetching RPC list from chainlist.org");
+            let bytes = self.http
+                .get(CHAINLIST_URL)
+                .send()
+                .await
+                .map_err(|e| log::debug!("chainlist: fetch failed: {}", e))
+                .ok()?
+                .bytes()
+                .await
+                .map_err(|e| log::debug!("chainlist: read failed: {}", e))
+                .ok()?
+                .to_vec();
 
-        let entries: Vec<ChainEntry> = resp
-            .json()
-            .await
+            // Persist to cache (non-fatal on failure).
+            if let Some(path) = &cache {
+                save_cache(path, &bytes);
+            }
+            bytes
+        };
+
+        let entries: Vec<ChainEntry> = serde_json::from_slice(&raw)
             .map_err(|e| log::debug!("chainlist: JSON parse failed: {}", e))
             .ok()?;
 

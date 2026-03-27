@@ -42,6 +42,10 @@ pub struct Cli {
     /// Hide emitted events (logs) in tree output
     #[arg(long)]
     pub no_events: bool,
+
+    /// Enable debug logging
+    #[arg(long, short = 'd')]
+    pub debug: bool,
 }
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]

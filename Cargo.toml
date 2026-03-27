@@ -37,3 +37,7 @@ async-trait = "0.1"
 
 # Hex encoding
 hex = "0.4"
+
+# Logging
+log = "0.4"
+env_logger = "0.11"

@@ -15,6 +15,11 @@ use std::collections::HashMap;
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
+    if cli.debug {
+        std::env::set_var("RUST_LOG", "trace_tx=debug");
+    }
+    env_logger::init();
+
     if cli.no_color {
         colored::control::set_override(false);
     }
@@ -45,16 +50,22 @@ async fn main() -> Result<()> {
     let http = reqwest::Client::new();
 
     // --- 1. Fetch trace ---
+    log::debug!("fetching trace for {} on chain {}", cli.tx_hash, chain_id);
     let root = fetch_trace(&cli, &http, rpc_url.as_deref(), chain_id).await?;
 
     // --- 2. Collect all unique addresses ---
     let addresses = collect_addresses(&root);
+    log::debug!("collected {} unique addresses", addresses.len());
 
     // --- 3. Resolve ABIs ---
+    log::debug!("resolving ABIs for {} addresses", addresses.len());
     let abis = abi::resolve_abis(&http, &addresses, chain_id).await;
+    log::debug!("resolved {} ABIs", abis.len());
 
     // --- 4. Resolve labels ---
+    log::debug!("resolving labels");
     let labels = label::resolve_labels(&http, &addresses, chain_id, rpc_url.as_deref()).await;
+    log::debug!("resolved {} labels", labels.len());
 
     // --- 5. Decode + annotate trace ---
     let mut root = root;
@@ -63,8 +74,10 @@ async fn main() -> Result<()> {
 
     // --- 5b. 4-byte selector lookup for any still-unresolved calls ---
     let unresolved = collect_unresolved_selectors(&root);
+    log::debug!("{} unresolved selectors, querying 4byte", unresolved.len());
     if !unresolved.is_empty() {
         let fourbyte = abi::fourbyte::lookup_selectors(&http, &unresolved).await;
+        log::debug!("4byte resolved {} selectors", fourbyte.len());
         apply_fourbyte_names(&mut root, &fourbyte);
     }
 
@@ -88,20 +101,25 @@ async fn fetch_trace(
     match &cli.trace_source {
         Some(TraceSource::Rpc) => {
             let url = rpc_url.context("--rpc or ALCHEMY_API_KEY required for RPC trace source")?;
+            log::debug!("trace source: RPC ({})", url);
             trace::rpc::fetch(http, url, &cli.tx_hash).await
         }
         Some(TraceSource::Dune) => {
+            log::debug!("trace source: Dune");
             trace::dune::fetch(http, &cli.tx_hash, chain_id).await
         }
         Some(TraceSource::Blockscout) => {
             let url = cli.blockscout.as_deref()
                 .context("--blockscout required for Blockscout trace source")?;
+            log::debug!("trace source: Blockscout ({})", url);
             trace::blockscout::fetch(http, url, &cli.tx_hash).await
         }
         None => {
             // Priority: RPC → Dune → Blockscout → simulate
             if let Some(url) = rpc_url {
+                log::debug!("trying RPC trace ({})", url);
                 if let Ok(frame) = trace::rpc::fetch(http, url, &cli.tx_hash).await {
+                    log::debug!("RPC trace succeeded");
                     return Ok(frame);
                 }
                 eprintln!("RPC trace failed, trying Dune...");
@@ -109,20 +127,25 @@ async fn fetch_trace(
 
             let dune_key = std::env::var("DUNE_API_KEY").ok();
             if dune_key.is_some() {
+                log::debug!("trying Dune trace");
                 if let Ok(frame) = trace::dune::fetch(http, &cli.tx_hash, chain_id).await {
+                    log::debug!("Dune trace succeeded");
                     return Ok(frame);
                 }
                 eprintln!("Dune trace failed, trying Blockscout...");
             }
 
             if let Some(url) = cli.blockscout.as_deref() {
+                log::debug!("trying Blockscout trace ({})", url);
                 if let Ok(frame) = trace::blockscout::fetch(http, url, &cli.tx_hash).await {
+                    log::debug!("Blockscout trace succeeded");
                     return Ok(frame);
                 }
                 eprintln!("Blockscout trace failed, falling back to simulation...");
             }
 
             eprintln!("Warning: falling back to local simulation — trace may be inaccurate");
+            log::debug!("falling back to simulate");
             trace::simulate::fetch(http, rpc_url, &cli.tx_hash, chain_id).await
         }
     }

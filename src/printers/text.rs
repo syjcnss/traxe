@@ -280,7 +280,7 @@ fn print_args(out: &mut dyn io::Write, args: &[DecodedArg], prefix: &str, label:
         } else {
             format!("{} {}", arg.name.white().bold(), format!("({})", arg.ty).bright_black())
         };
-        let val = color_value(truncate_value(&arg.value, 120));
+        let val = color_value(arg.value.clone());
         writeln!(out, "{con}{name_part}: {val}")?;
     }
     Ok(())
@@ -305,14 +305,6 @@ fn color_value(s: String) -> colored::ColoredString {
         return s.bright_cyan();
     }
     s.normal()
-}
-
-fn truncate_value(s: &str, max: usize) -> String {
-    if s.len() > max {
-        format!("{}…", &s[..max])
-    } else {
-        s.to_string()
-    }
 }
 
 fn parse_hex_u64(s: &str) -> u64 {

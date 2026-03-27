@@ -1,15 +1,10 @@
-mod chains;
-mod cli;
-mod tree;
-mod printers;
-mod providers;
-mod types;
-
 use anyhow::{Context, Result};
 use clap::Parser;
-use cli::{Cli, PrinterKind};
-use printers::Printer;
-use providers::ProviderFactory;
+use traxe::chains;
+use traxe::cli::{Cli, PrinterKind};
+use traxe::printers::{self, Printer};
+use traxe::providers::ProviderFactory;
+use traxe::tree;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -39,6 +34,7 @@ async fn main() -> Result<()> {
     let factory = ProviderFactory::new()
         .rpc(cli.rpc.clone())
         .blockscout(cli.blockscout.clone())
+        .eightbyte(cli.eightbyte.clone())
         .trace_source(cli.trace_provider.clone());
 
     // Build the RPC provider: --rpc > ALCHEMY_API_KEY > chainlist.

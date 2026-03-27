@@ -2,6 +2,7 @@ mod decode;
 
 use std::collections::{HashMap, HashSet};
 
+use alloy_json_abi::{Event, Function};
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
@@ -89,13 +90,24 @@ pub async fn build(pm: &impl DataProvider) -> Result<Node> {
     // 5. Propagate delegatecall names
     propagate_delegatecall_names(&mut root);
 
-    // 6. 4-byte fallback for unresolved selectors
+    // 6. Selector fallback for unresolved function calls
     let unresolved = collect_unresolved_selectors(&root);
     log::debug!("tree: {} unresolved selectors", unresolved.len());
     if !unresolved.is_empty() {
         let fourbyte = pm.resolve_selectors(&unresolved).await;
-        log::debug!("tree: 4byte resolved {} selectors", fourbyte.len());
+        log::debug!("tree: resolved {} selectors", fourbyte.len());
         apply_fourbyte_names(&mut root, &fourbyte);
+    }
+
+    // 7. Event topic resolution (eightbyte only — no-op when not configured)
+    let unresolved_topics = collect_unresolved_event_topics(&root);
+    log::debug!("tree: {} unresolved event topics", unresolved_topics.len());
+    if !unresolved_topics.is_empty() {
+        let events = pm.resolve_event_topics(&unresolved_topics).await;
+        log::debug!("tree: resolved {} event topics", events.len());
+        if !events.is_empty() {
+            apply_eightbyte_event_names(&mut root, &events);
+        }
     }
 
     Ok(root)
@@ -338,26 +350,101 @@ fn collect_unresolved_inner(node: &Node, out: &mut HashSet<String>) {
     }
 }
 
-fn apply_fourbyte_names(node: &mut Node, names: &HashMap<String, String>) {
+fn apply_fourbyte_names(node: &mut Node, names: &HashMap<String, Vec<Function>>) {
     let Node::Call(call) = node else { return };
     if call.function_name.is_none() {
         let hex = call.input.trim_start_matches("0x");
         if hex.len() >= 8 {
             let key = format!("0x{}", &hex[..8].to_lowercase());
-            if let Some(sig) = names.get(&key) {
+            if let Some(candidates) = names.get(&key) {
                 let input_bytes =
                     hex::decode(call.input.trim_start_matches("0x")).unwrap_or_default();
-                if let Some((name, args)) = decode::decode_input_from_sig(sig, &input_bytes) {
-                    call.function_name = Some(name);
-                    call.decoded_input = Some(args);
-                } else {
-                    call.function_name = Some(sig.clone());
+                // Try each candidate in order; use the first whose calldata decodes correctly.
+                // This resolves 4-byte collisions by comparing the decoded calldata size.
+                let mut matched = false;
+                for func in candidates {
+                    if let Some((name, args)) =
+                        decode::decode_input_from_function(func, &input_bytes)
+                    {
+                        call.function_name = Some(name);
+                        call.decoded_input = Some(args);
+                        if let Some(output_hex) = &call.output {
+                            let output_bytes =
+                                hex::decode(output_hex.trim_start_matches("0x")).unwrap_or_default();
+                            call.decoded_output =
+                                decode::decode_output_from_function(func, &output_bytes);
+                        }
+                        matched = true;
+                        break;
+                    }
+                }
+                // No candidate decoded — fall back to showing the first candidate's name.
+                if !matched {
+                    if let Some(func) = candidates.first() {
+                        call.function_name = Some(func.signature());
+                    }
                 }
             }
         }
     }
     for child in &mut call.children {
         apply_fourbyte_names(child, names);
+    }
+}
+
+fn collect_unresolved_event_topics(node: &Node) -> Vec<String> {
+    let mut topics = HashSet::new();
+    collect_unresolved_event_topics_inner(node, &mut topics);
+    topics.into_iter().collect()
+}
+
+fn collect_unresolved_event_topics_inner(node: &Node, out: &mut HashSet<String>) {
+    match node {
+        Node::Event(ev) if ev.event_name.is_none() => {
+            if let Some(topic0) = ev.topics.first() {
+                let t = topic0.to_lowercase();
+                let key = if t.starts_with("0x") { t } else { format!("0x{t}") };
+                out.insert(key);
+            }
+        }
+        Node::Event(_) => {}
+        Node::Call(call) => {
+            for child in &call.children {
+                collect_unresolved_event_topics_inner(child, out);
+            }
+        }
+    }
+}
+
+fn apply_eightbyte_event_names(node: &mut Node, events: &HashMap<String, Event>) {
+    match node {
+        Node::Event(ev) if ev.event_name.is_none() => {
+            if let Some(topic0) = ev.topics.first() {
+                let t = topic0.to_lowercase();
+                let key = if t.starts_with("0x") { t } else { format!("0x{t}") };
+                if let Some(event_def) = events.get(&key) {
+                    let raw_topics: Vec<Vec<u8>> = ev
+                        .topics
+                        .iter()
+                        .map(|t| hex::decode(t.trim_start_matches("0x")).unwrap_or_default())
+                        .collect();
+                    let data =
+                        hex::decode(ev.data.trim_start_matches("0x")).unwrap_or_default();
+                    if let Some((name, args)) =
+                        decode::decode_event_from_def(event_def, &raw_topics, &data)
+                    {
+                        ev.event_name = Some(name);
+                        ev.decoded_args = Some(args);
+                    }
+                }
+            }
+        }
+        Node::Event(_) => {}
+        Node::Call(call) => {
+            for child in &mut call.children {
+                apply_eightbyte_event_names(child, events);
+            }
+        }
     }
 }
 

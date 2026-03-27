@@ -1,5 +1,6 @@
 mod blockscout;
 mod dune;
+mod eightbyte;
 mod etherscan;
 pub mod factory;
 mod manager;
@@ -10,6 +11,7 @@ pub mod well_known;
 
 pub use blockscout::BlockscoutProvider;
 pub use dune::DuneProvider;
+pub use eightbyte::EightbyteProvider;
 pub use etherscan::EtherscanProvider;
 pub use factory::{ProviderFactory, TraceSource};
 pub use manager::ProviderManager;
@@ -20,6 +22,7 @@ pub use well_known::WellKnownProvider;
 
 use std::collections::HashMap;
 
+use alloy_json_abi::{Event, Function};
 use anyhow::Result;
 use async_trait::async_trait;
 
@@ -92,5 +95,19 @@ pub trait DataProvider: Provider {
 
     async fn resolve_labels(&self, addresses: &[String]) -> HashMap<String, String>;
 
-    async fn resolve_selectors(&self, selectors: &[String]) -> HashMap<String, String>;
+    /// Resolve 4-byte function selectors to their ABI definitions.
+    ///
+    /// Returns all matching `Function` candidates per selector.  Multiple entries
+    /// indicate a 4-byte collision; callers should try each candidate in order and
+    /// use the first one whose ABI-decoding of the calldata succeeds.
+    async fn resolve_selectors(&self, selectors: &[String]) -> HashMap<String, Vec<Function>>;
+
+    /// Resolve 32-byte event topic0 hashes to their ABI `Event` definitions.
+    ///
+    /// Only implemented when an eightbyte provider is configured; returns an empty
+    /// map otherwise.
+    async fn resolve_event_topics(&self, topics: &[String]) -> HashMap<String, Event> {
+        let _ = topics;
+        HashMap::new()
+    }
 }

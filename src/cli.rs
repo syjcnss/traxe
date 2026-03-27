@@ -21,6 +21,10 @@ pub struct Cli {
     #[arg(long)]
     pub blockscout: Option<String>,
 
+    /// Eightbyte signature service endpoint URL (e.g. http://127.0.0.1:3000)
+    #[arg(long)]
+    pub eightbyte: Option<String>,
+
     /// Chain name or chain ID (e.g. ethereum, polygon, 1, 137).
     /// Required when --rpc is not provided.
     #[arg(short = 'c', long)]

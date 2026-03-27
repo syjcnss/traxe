@@ -1,12 +1,13 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use alloy_json_abi::{Event, Function};
 use anyhow::Result;
 use async_trait::async_trait;
 
 use crate::types::{CallFrame, ResolvedAbi};
 
-use super::{sourcify, DataProvider, Priorities, Provider};
+use super::{sourcify, DataProvider, EightbyteProvider, Priorities, Provider};
 
 /// Composite provider that dispatches to registered underlying providers ordered by priority,
 /// falling back to the next one on error. Itself implements [`Provider`] and [`DataProvider`]
@@ -15,6 +16,7 @@ pub struct ProviderManager {
     http: reqwest::Client,
     chain_id: u64,
     tx_hash: String,
+    eightbyte: Option<EightbyteProvider>,
     /// (priority, provider) pairs sorted ascending by priority (lowest = tried first).
     trace_providers: Vec<(u8, Arc<dyn Provider>)>,
     abi_providers: Vec<(u8, Arc<dyn Provider>)>,
@@ -27,10 +29,15 @@ impl ProviderManager {
             http,
             chain_id,
             tx_hash,
+            eightbyte: None,
             trace_providers: Vec::new(),
             abi_providers: Vec::new(),
             label_providers: Vec::new(),
         }
+    }
+
+    pub fn set_eightbyte(&mut self, provider: EightbyteProvider) {
+        self.eightbyte = Some(provider);
     }
 
     /// Register a provider with explicit priorities for each role it should fill.
@@ -152,10 +159,36 @@ impl DataProvider for ProviderManager {
         result
     }
 
-    async fn resolve_selectors(&self, selectors: &[String]) -> HashMap<String, String> {
+    async fn resolve_selectors(&self, selectors: &[String]) -> HashMap<String, Vec<Function>> {
         if selectors.is_empty() {
             return HashMap::new();
         }
-        sourcify::lookup_selectors(&self.http, selectors).await
+        if let Some(eb) = &self.eightbyte {
+            log::debug!("selectors: using eightbyte for {} selectors", selectors.len());
+            eb.lookup_function_selectors(selectors).await
+        } else {
+            // Fall back to sourcify: parse returned signature strings as Function objects.
+            // Parameter names will be empty but types are correct.
+            let strings = sourcify::lookup_selectors(&self.http, selectors).await;
+            strings
+                .into_iter()
+                .filter_map(|(selector, sig)| {
+                    let func: Function = sig.parse().ok()?;
+                    Some((selector, vec![func]))
+                })
+                .collect()
+        }
+    }
+
+    async fn resolve_event_topics(&self, topics: &[String]) -> HashMap<String, Event> {
+        if topics.is_empty() {
+            return HashMap::new();
+        }
+        if let Some(eb) = &self.eightbyte {
+            log::debug!("events: using eightbyte for {} topic0 hashes", topics.len());
+            eb.lookup_event_topics(topics).await
+        } else {
+            HashMap::new()
+        }
     }
 }

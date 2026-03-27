@@ -1,28 +1,76 @@
 use alloy_dyn_abi::{DynSolType, DynSolValue};
-use alloy_json_abi::{EventParam, JsonAbi, Param};
+use alloy_json_abi::{Event, EventParam, Function, JsonAbi, Param};
 
 use crate::types::DecodedArg;
 
-/// Decode calldata using a raw function signature string (e.g. from 4-byte DB).
-/// Returns (function_name, decoded_args) or None.
-pub fn decode_input_from_sig(sig: &str, input: &[u8]) -> Option<(String, Vec<DecodedArg>)> {
+/// Decode calldata against a structured `Function` definition.
+///
+/// Strict variant used for collision resolution: returns `None` if the ABI decode
+/// fails, so the caller can try the next candidate.
+pub fn decode_input_from_function(func: &Function, input: &[u8]) -> Option<(String, Vec<DecodedArg>)> {
     if input.len() < 4 {
         return None;
     }
-    let func: alloy_json_abi::Function = sig.parse().ok()?;
     let calldata = &input[4..];
-    let args = try_decode_params(&func.inputs, calldata).unwrap_or_else(|| {
+    if func.inputs.is_empty() {
+        // Only match if there is no trailing calldata beyond the selector.
         if calldata.is_empty() {
-            vec![]
+            return Some((func.name.clone(), vec![]));
         } else {
-            vec![DecodedArg {
-                name: String::new(),
-                ty: "bytes".to_string(),
-                value: hex::encode(calldata),
-            }]
+            return None;
         }
-    });
+    }
+    let args = try_decode_params(&func.inputs, calldata)?;
     Some((func.name.clone(), args))
+}
+
+/// Decode return data against a structured `Function` definition.
+pub fn decode_output_from_function(func: &Function, output: &[u8]) -> Option<Vec<DecodedArg>> {
+    if func.outputs.is_empty() {
+        return None;
+    }
+    try_decode_params(&func.outputs, output)
+}
+
+/// Decode an event log given a specific `Event` definition (already selector-matched).
+///
+/// Shared logic extracted from [`decode_event`].
+pub fn decode_event_from_def(
+    event: &Event,
+    topics: &[Vec<u8>],
+    data: &[u8],
+) -> Option<(String, Vec<DecodedArg>)> {
+    let mut args: Vec<DecodedArg> = Vec::new();
+    let mut topic_idx = 1usize;
+
+    for input in &event.inputs {
+        if input.indexed {
+            let val = match topics.get(topic_idx) {
+                Some(topic_bytes) => {
+                    match resolve_event_param_type(input)
+                        .and_then(|ty| ty.abi_decode(topic_bytes).ok())
+                    {
+                        Some(v) => format_dyn_value(&v),
+                        None => format!("0x{}", hex::encode(topic_bytes)),
+                    }
+                }
+                None => String::new(),
+            };
+            topic_idx += 1;
+            args.push(DecodedArg { name: input.name.clone(), ty: input.ty.clone(), value: val });
+        }
+    }
+
+    let non_indexed: Vec<Param> =
+        event.inputs.iter().filter(|i| !i.indexed).map(event_param_to_param).collect();
+
+    if !non_indexed.is_empty() {
+        if let Some(decoded) = try_decode_params(&non_indexed, data) {
+            args.extend(decoded);
+        }
+    }
+
+    Some((event.name.clone(), args))
 }
 
 /// Decode calldata against the ABI. Returns (function_name, decoded_args) or None.
@@ -98,42 +146,7 @@ pub fn decode_event(
         if selector.as_slice() != topics[0].as_slice() {
             continue;
         }
-
-        let mut args: Vec<DecodedArg> = Vec::new();
-        let mut topic_idx = 1usize;
-
-        for input in &event.inputs {
-            if input.indexed {
-                let val = match topics.get(topic_idx) {
-                    Some(topic_bytes) => {
-                        match resolve_event_param_type(input)
-                            .and_then(|ty| ty.abi_decode(topic_bytes).ok())
-                        {
-                            Some(v) => format_dyn_value(&v),
-                            None => format!("0x{}", hex::encode(topic_bytes)),
-                        }
-                    }
-                    None => String::new(),
-                };
-                topic_idx += 1;
-                args.push(DecodedArg { name: input.name.clone(), ty: input.ty.clone(), value: val });
-            }
-        }
-
-        let non_indexed: Vec<Param> = event
-            .inputs
-            .iter()
-            .filter(|i| !i.indexed)
-            .map(event_param_to_param)
-            .collect();
-
-        if !non_indexed.is_empty() {
-            if let Some(decoded) = try_decode_params(&non_indexed, data) {
-                args.extend(decoded);
-            }
-        }
-
-        return Some((event.name.clone(), args));
+        return decode_event_from_def(event, topics, data);
     }
     None
 }

@@ -6,8 +6,8 @@ use clap::ValueEnum;
 use crate::chains;
 
 use super::{
-    BlockscoutProvider, DuneProvider, EtherscanProvider, Priorities, ProviderManager, RpcProvider,
-    SimulatorProvider, SourcifyProvider, WellKnownProvider,
+    BlockscoutProvider, DuneProvider, EightbyteProvider, EtherscanProvider, Priorities,
+    ProviderManager, RpcProvider, SimulatorProvider, SourcifyProvider, WellKnownProvider,
 };
 
 #[derive(ValueEnum, Debug, Clone, PartialEq)]
@@ -22,6 +22,7 @@ pub struct ProviderFactory {
     http: reqwest::Client,
     rpc_url: Option<String>,
     blockscout_url: Option<String>,
+    eightbyte_url: Option<String>,
     trace_source: Option<TraceSource>,
 }
 
@@ -31,6 +32,7 @@ impl ProviderFactory {
             http: reqwest::Client::new(),
             rpc_url: None,
             blockscout_url: None,
+            eightbyte_url: None,
             trace_source: None,
         }
     }
@@ -42,6 +44,11 @@ impl ProviderFactory {
 
     pub fn blockscout(mut self, url: Option<String>) -> Self {
         self.blockscout_url = url.or_else(|| std::env::var("BLOCKSCOUT_URL").ok());
+        self
+    }
+
+    pub fn eightbyte(mut self, url: Option<String>) -> Self {
+        self.eightbyte_url = url.or_else(|| std::env::var("EIGHTBYTE_URL").ok());
         self
     }
 
@@ -143,6 +150,10 @@ impl ProviderFactory {
             if !matches!(self.trace_source, None | Some(TraceSource::Blockscout)) {
                 pm.register(BlockscoutProvider::new(self.http.clone(), url.clone()), Priorities::default().abi(30).label(30));
             }
+        }
+
+        if let Some(url) = &self.eightbyte_url {
+            pm.set_eightbyte(EightbyteProvider::new(self.http.clone(), url.clone()));
         }
 
         pm

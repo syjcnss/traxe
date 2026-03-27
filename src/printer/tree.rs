@@ -11,6 +11,7 @@ pub struct TreePrinter {
     native_symbol: String,
     raw_data: bool,
     show_events: bool,
+    show_gas: bool,
 }
 
 impl TreePrinter {
@@ -19,6 +20,7 @@ impl TreePrinter {
             native_symbol,
             raw_data: args.raw_data,
             show_events: !args.no_events,
+            show_gas: args.show_gas,
         }
     }
 }
@@ -28,19 +30,19 @@ impl Printer for TreePrinter {
         if let Node::Call(call) = root {
             writeln!(out, "{}", call.from.bright_white().bold())?;
         }
-        print_node(out, root, "", true, &self.native_symbol, self.raw_data, self.show_events)?;
+        print_node(out, root, "", true, &self.native_symbol, self.raw_data, self.show_events, self.show_gas)?;
         Ok(())
     }
 }
 
-fn print_node(out: &mut dyn io::Write, node: &Node, prefix: &str, is_last: bool, native_symbol: &str, raw_data: bool, show_events: bool) -> Result<()> {
+fn print_node(out: &mut dyn io::Write, node: &Node, prefix: &str, is_last: bool, native_symbol: &str, raw_data: bool, show_events: bool, show_gas: bool) -> Result<()> {
     match node {
-        Node::Call(call) => print_call(out, call, prefix, is_last, native_symbol, raw_data, show_events),
+        Node::Call(call) => print_call(out, call, prefix, is_last, native_symbol, raw_data, show_events, show_gas),
         Node::Event(event) => print_event(out, event, prefix, is_last),
     }
 }
 
-fn print_call(out: &mut dyn io::Write, call: &CallNode, prefix: &str, is_last: bool, native_symbol: &str, raw_data: bool, show_events: bool) -> Result<()> {
+fn print_call(out: &mut dyn io::Write, call: &CallNode, prefix: &str, is_last: bool, native_symbol: &str, raw_data: bool, show_events: bool, show_gas: bool) -> Result<()> {
     let (branch, pipe) = if is_last { ("└─ ", "   ") } else { ("├─ ", "│  ") };
     let connector = format!("{}{}", prefix.bright_black(), branch.bright_black());
     let child_prefix = format!("{}{}", prefix, pipe);
@@ -71,7 +73,7 @@ fn print_call(out: &mut dyn io::Write, call: &CallNode, prefix: &str, is_last: b
     if !value_str.is_empty() {
         write!(out, " {}", value_str.bright_magenta().bold())?;
     }
-    if !gas_str.is_empty() {
+    if show_gas && !gas_str.is_empty() {
         write!(out, " {}", gas_str.bright_black())?;
     }
     if !error_str.is_empty() {
@@ -118,7 +120,7 @@ fn print_call(out: &mut dyn io::Write, call: &CallNode, prefix: &str, is_last: b
         .collect();
     let total = visible.len();
     for (i, child) in visible.iter().enumerate() {
-        print_node(out, child, &child_prefix, i + 1 == total, native_symbol, raw_data, show_events)?;
+        print_node(out, child, &child_prefix, i + 1 == total, native_symbol, raw_data, show_events, show_gas)?;
     }
     Ok(())
 }

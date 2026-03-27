@@ -213,7 +213,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
 
     // ── CallNodeRow ───────────────────────────────────────────────────────────
 
-    function CallNodeRow({ node, isRoot, showRawData, showEvents, nativeSymbol }) {
+    function CallNodeRow({ node, isRoot, showRawData, showEvents, showGas, nativeSymbol }) {
       const [open, setOpen] = React.useState(true);
 
       const input    = node.input || '';
@@ -274,7 +274,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
             )}
 
             {valueStr && <Chip label={valueStr} className="text-violet-400 border-violet-800/50 bg-violet-950/40" />}
-            <Chip label={`${gasStr} gas`} className="text-zinc-500 dark:text-zinc-600 border-zinc-300 dark:border-zinc-800 bg-transparent" />
+            {showGas && <Chip label={`${gasStr} gas`} className="text-zinc-500 dark:text-zinc-600 border-zinc-300 dark:border-zinc-800 bg-transparent" />}
             {node.error && <Chip label={`revert: ${node.error}`} className="text-red-400 border-red-900/60 bg-red-950/30" />}
           </div>
 
@@ -288,7 +288,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
 
               {visibleChildren.map((child, i) =>
                 child.type === 'call'
-                  ? <CallNodeRow key={i} node={child} isRoot={false} showRawData={showRawData} showEvents={showEvents} nativeSymbol={nativeSymbol} />
+                  ? <CallNodeRow key={i} node={child} isRoot={false} showRawData={showRawData} showEvents={showEvents} showGas={showGas} nativeSymbol={nativeSymbol} />
                   : <EventNodeRow key={i} event={child} />
               )}
             </div>
@@ -320,6 +320,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
     function App() {
       const [showRawData, setShowRawData] = React.useState(false);
       const [showEvents,  setShowEvents]  = React.useState(true);
+      const [showGas,     setShowGas]     = React.useState(true);
       const [isDark,      setIsDark]      = React.useState(true);
 
       React.useEffect(() => {
@@ -354,6 +355,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
               <div className="flex items-center gap-4 shrink-0">
                 <Toggle checked={showRawData} onChange={setShowRawData} label="Raw" />
                 <Toggle checked={showEvents}  onChange={setShowEvents}  label="Events" />
+                <Toggle checked={showGas}     onChange={setShowGas}     label="Gas" />
                 <Toggle checked={isDark}      onChange={setIsDark}      label="Dark" />
               </div>
             </div>
@@ -372,6 +374,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
                 isRoot={true}
                 showRawData={showRawData}
                 showEvents={showEvents}
+                showGas={showGas}
                 nativeSymbol={nativeSymbol}
               />
             )}

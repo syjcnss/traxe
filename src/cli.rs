@@ -72,4 +72,8 @@ pub struct TreeArgs {
     /// Hide emitted events (logs) [tree printer only]
     #[arg(long = "tree-no-events")]
     pub no_events: bool,
+
+    /// Show gas usage [tree printer only]
+    #[arg(long = "tree-show-gas")]
+    pub show_gas: bool,
 }

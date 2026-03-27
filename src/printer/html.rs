@@ -157,7 +157,7 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
     }
 
     function RawDataSection({ label, hex }) {
-      if (!hex || hex === '0x') return null;
+      if (!hex) return null;
       return (
         <div className="my-1.5 pl-3 border-l-2 border-zinc-200 dark:border-zinc-800">
           <p className="text-[0.65rem] text-zinc-400 dark:text-zinc-600 italic mb-1 font-mono">{label}</p>
@@ -227,8 +227,10 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
 
       const hasDecodedIn  = node.decoded_input  && node.decoded_input.length  > 0;
       const hasDecodedOut = node.decoded_output && node.decoded_output.length > 0;
-      const hasRawIn      = showRawData && input && input !== '0x';
-      const hasRawOut     = showRawData && node.output && node.output !== '0x';
+      const hasRawIn      = showRawData;
+      const hasRawOut     = showRawData;
+      const rawIn         = (input && input !== '') ? input : '0x';
+      const rawOut        = (node.output && node.output !== '') ? node.output : '0x';
 
       const visibleChildren = (node.children || []).filter(c =>
         c.type === 'call' || (showEvents && c.type === 'event')
@@ -279,10 +281,10 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
           {/* body */}
           {hasContent && open && (
             <div className="pl-4 ml-2.5 border-l border-zinc-200 dark:border-zinc-800">
-              {hasRawIn      && <RawDataSection label="input"   hex={node.input} />}
-              {hasDecodedIn  && <ArgsSection    label="inputs"  args={node.decoded_input} />}
-              {hasDecodedOut && <ArgsSection    label="outputs" args={node.decoded_output} />}
-              {hasRawOut     && <RawDataSection label="output"  hex={node.output} />}
+              {hasRawIn      && <RawDataSection label="raw input"      hex={rawIn} />}
+              {hasRawOut     && <RawDataSection label="raw output"     hex={rawOut} />}
+              {hasDecodedIn  && <ArgsSection    label="decoded input"  args={node.decoded_input} />}
+              {hasDecodedOut && <ArgsSection    label="decoded output" args={node.decoded_output} />}
 
               {visibleChildren.map((child, i) =>
                 child.type === 'call'

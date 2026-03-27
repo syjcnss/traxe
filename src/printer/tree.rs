@@ -83,35 +83,30 @@ fn print_call(out: &mut dyn io::Write, call: &CallNode, prefix: &str, is_last: b
     // Used for tree connector direction on input/output sections, matching original behavior.
     let has_call_children = call.children.iter().any(|n| matches!(n, Node::Call(_)));
 
-    // Print decoded input args (or raw input)
-    let has_decoded_input = call.decoded_input.as_ref().map_or(false, |a| !a.is_empty());
-    if raw_data && !call.input.is_empty() && call.input != "0x" {
-        let after = !has_decoded_input
-            && !has_call_children
-            && call.decoded_output.is_none()
-            && call.output.is_none();
-        print_raw_data(out, &call.input, &child_prefix, "input", after)?;
+    // Print raw input then raw output, followed by decoded input then decoded output.
+    let has_decoded_input  = call.decoded_input.as_ref().map_or(false, |a| !a.is_empty());
+    let has_decoded_output = call.decoded_output.as_ref().map_or(false, |a| !a.is_empty());
+
+    if raw_data {
+        let raw_in = if call.input.is_empty() { "0x" } else { &call.input };
+        print_raw_data(out, raw_in, &child_prefix, "raw input", false)?;
+
+        let raw_out = call.output.as_deref().unwrap_or("0x");
+        let raw_out = if raw_out.is_empty() { "0x" } else { raw_out };
+        let after_raw = !has_decoded_input && !has_decoded_output && !has_call_children;
+        print_raw_data(out, raw_out, &child_prefix, "raw output", after_raw)?;
     }
+
     if let Some(args) = &call.decoded_input {
         if !args.is_empty() {
-            let is_last_item = !has_call_children
-                && call.decoded_output.is_none()
-                && (!raw_data || call.output.is_none());
-            print_args(out, args, &child_prefix, "inputs", is_last_item)?;
+            let is_last_item = !has_call_children && !has_decoded_output && !raw_data;
+            print_args(out, args, &child_prefix, "decoded input", is_last_item)?;
         }
     }
 
-    // Print decoded output (or raw output)
-    let raw_output =
-        raw_data && call.output.as_deref().map_or(false, |o| !o.is_empty() && o != "0x");
     if let Some(args) = &call.decoded_output {
         if !args.is_empty() {
-            print_args(out, args, &child_prefix, "outputs", !has_call_children && !raw_output)?;
-        }
-    }
-    if raw_output {
-        if let Some(output) = &call.output {
-            print_raw_data(out, output, &child_prefix, "output", !has_call_children)?;
+            print_args(out, args, &child_prefix, "decoded output", !has_call_children && !raw_data)?;
         }
     }
 
@@ -253,7 +248,7 @@ fn print_args(out: &mut dyn io::Write, args: &[DecodedArg], prefix: &str, label:
         let (b2, _) = if last { ("└─ ", "   ") } else { ("├─ ", "│  ") };
         let con = format!("{}{}", sub_prefix_plain.bright_black(), b2.bright_black());
         let name_part = if arg.name.is_empty() || arg.name == "_" {
-            format!("({})", arg.ty.bright_black())
+            format!("({})", arg.ty).bright_black().to_string()
         } else {
             format!("{} {}", arg.name.white().bold(), format!("({})", arg.ty).bright_black())
         };

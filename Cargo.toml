@@ -29,6 +29,14 @@ thiserror = "1"
 alloy-json-abi = "0.8"
 alloy-dyn-abi = "0.8"
 
+# Local EVM simulation
+revm = { version = "36", default-features = false, features = [
+    "std",
+    "optional_no_base_fee",
+    "optional_block_gas_limit",
+    "optional_eip3607",
+] }
+
 # Terminal output
 colored = "2"
 

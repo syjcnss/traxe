@@ -69,9 +69,6 @@ pub async fn fetch(
     Ok(frame)
 }
 
-pub fn parse_minimal_frame(v: &Value) -> Result<CallFrame> {
-    parse_call_tracer_frame(v)
-}
 
 fn parse_call_tracer_frame(v: &Value) -> Result<CallFrame> {
     let call_type = parse_call_type(v.get("type").and_then(|t| t.as_str()).unwrap_or("CALL"));

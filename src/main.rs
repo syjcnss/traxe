@@ -126,7 +126,9 @@ async fn fetch_trace(
         }
         Some(TraceProvider::Dune) => {
             log::debug!("trace provider: dune");
-            trace::dune::fetch(http, &cli.tx_hash, chain_id).await
+            let mut frame = trace::dune::fetch(http, &cli.tx_hash, chain_id).await?;
+            populate_dune_logs(http, providers, &mut frame, chain_id, &cli.tx_hash).await;
+            Ok(frame)
         }
         Some(TraceProvider::Blockscout) => {
             let url = providers.blockscout_url.as_deref()
@@ -157,8 +159,10 @@ async fn fetch_trace(
             if providers.dune_key.is_some() {
                 log::debug!("trying dune trace");
                 match trace::dune::fetch(http, &cli.tx_hash, chain_id).await {
-                    Ok(frame) => {
+                    Ok(mut frame) => {
                         log::debug!("dune trace succeeded");
+                        populate_dune_logs(http, providers, &mut frame, chain_id, &cli.tx_hash)
+                            .await;
                         return Ok(frame);
                     }
                     Err(e) => {
@@ -186,6 +190,94 @@ async fn fetch_trace(
             log::debug!("falling back to simulate");
             trace::simulate::fetch(http, providers.rpc_url.as_deref(), &cli.tx_hash, chain_id).await
         }
+    }
+}
+
+/// After a Dune trace fetch (which contains no event logs), populate logs using
+/// the best available strategy:
+///
+/// - **RPC available** → run the local simulator; copy logs from its output into
+///   the corresponding Dune call frames.  The simulator captures exact per-frame
+///   log attribution from the Inspector hook, so this is always accurate.
+///
+/// - **RPC not available** → query Dune's `<chain>.logs` table for the raw logs,
+///   fetch contract bytecodes from `<chain>.creation_traces`, disassemble the
+///   bytecode to determine how many LOG instructions each function emits before
+///   vs after external calls, then assign logs in DFS execution order.
+async fn populate_dune_logs(
+    http: &reqwest::Client,
+    providers: &provider::Providers,
+    root: &mut types::CallFrame,
+    chain_id: u64,
+    tx_hash: &str,
+) {
+    if let Some(rpc_url) = &providers.rpc_url {
+        // Strategy 1: simulation gives exact per-frame log attribution
+        log::debug!("dune: populating event logs via simulation");
+        match trace::simulate::fetch(http, Some(rpc_url), tx_hash, chain_id).await {
+            Ok(sim_root) => {
+                trace::event_position::position_from_simulation(root, &sim_root);
+                log::debug!("dune: event logs populated via simulation");
+                return;
+            }
+            Err(e) => {
+                log::debug!("dune: simulation failed ({}), falling back to bytecode analysis", e);
+            }
+        }
+    }
+
+    // Strategy 2: fetch logs + bytecodes from Dune, use bytecode analysis for positioning
+    log::debug!("dune: fetching event logs from Dune logs table");
+    let raw_logs = match trace::dune::fetch_logs(http, tx_hash, chain_id).await {
+        Ok(logs) => logs,
+        Err(e) => {
+            log::debug!("dune: failed to fetch event logs: {}", e);
+            eprintln!("Warning: could not fetch event logs from Dune: {}", e);
+            return;
+        }
+    };
+
+    if raw_logs.is_empty() {
+        log::debug!("dune: no event logs found for this transaction");
+        return;
+    }
+
+    log::debug!("dune: got {} event logs, fetching bytecodes for positioning", raw_logs.len());
+    let callee_addrs = collect_callee_addresses(root);
+    let bytecodes = match trace::dune::fetch_bytecodes(http, &callee_addrs, chain_id).await {
+        Ok(bc) => bc,
+        Err(e) => {
+            log::debug!("dune: failed to fetch bytecodes: {}, continuing without profiles", e);
+            HashMap::new()
+        }
+    };
+
+    log::debug!(
+        "dune: positioning {} logs using bytecode profiles ({} contracts analysed)",
+        raw_logs.len(),
+        bytecodes.len(),
+    );
+    trace::event_position::position_from_bytecode(root, raw_logs, &bytecodes);
+    log::debug!("dune: event log positioning complete");
+}
+
+/// Collect the unique `to` addresses of all call frames (the callee contracts).
+/// These are the contracts whose bytecode we need for log positioning.
+fn collect_callee_addresses(frame: &types::CallFrame) -> Vec<String> {
+    let mut seen = std::collections::HashSet::new();
+    collect_callee_addresses_inner(frame, &mut seen);
+    seen.into_iter().collect()
+}
+
+fn collect_callee_addresses_inner(
+    frame: &types::CallFrame,
+    out: &mut std::collections::HashSet<String>,
+) {
+    if let Some(to) = &frame.to {
+        out.insert(to.to_lowercase());
+    }
+    for child in &frame.calls {
+        collect_callee_addresses_inner(child, out);
     }
 }
 

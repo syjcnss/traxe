@@ -56,9 +56,9 @@ impl Providers {
         }
 
         let name_width = rows.iter().map(|r| r.name.len()).max().unwrap_or(0);
-        eprintln!("Providers:");
+        log::info!("Providers:");
         for r in &rows {
-            eprintln!("  {:<width$}  {}", r.name, r.via, width = name_width);
+            log::info!("  {:<width$}  {}", r.name, r.via, width = name_width);
         }
     }
 }

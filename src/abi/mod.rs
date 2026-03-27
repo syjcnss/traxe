@@ -24,6 +24,13 @@ pub async fn resolve_abis(
     for addr in addresses {
         let lower = addr.to_lowercase();
 
+        // 0. Well-known precompiles — no network fetch needed
+        if let Some(abi) = well_known::precompile_abi(&lower) {
+            log::debug!("abi: well_known precompile hit for {}", lower);
+            result.insert(lower.clone(), ResolvedAbi { abi, contract_name: None });
+            continue;
+        }
+
         // 1. Sourcify (always available)
         log::debug!("abi: trying Sourcify for {}", lower);
         match sourcify::fetch_abi(http, &lower, chain_id).await {

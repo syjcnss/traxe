@@ -19,6 +19,29 @@ impl EtherscanProvider {
     }
 }
 
+/// Returns `~/.cache/traxe/etherscan/{chain_id}/{address}.json` if HOME is set.
+fn cache_path(address: &str, chain_id: u64) -> Option<std::path::PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    let mut path = std::path::PathBuf::from(home);
+    path.push(format!(".cache/traxe/etherscan/{}/{}.json", chain_id, address.to_lowercase()));
+    Some(path)
+}
+
+fn load_cache(path: &std::path::Path) -> Option<Vec<u8>> {
+    std::fs::read(path).ok()
+}
+
+fn save_cache(path: &std::path::Path, data: &[u8]) {
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Err(e) = std::fs::write(path, data) {
+        log::debug!("etherscan: failed to write cache: {}", e);
+    } else {
+        log::debug!("etherscan: saved to cache at {}", path.display());
+    }
+}
+
 #[async_trait]
 impl Provider for EtherscanProvider {
     fn name(&self) -> &'static str {
@@ -36,26 +59,57 @@ impl Provider for EtherscanProvider {
     }
 }
 
-async fn fetch_abi_and_name(
+/// Fetches the raw `getsourcecode` response JSON, using the on-disk cache when available.
+async fn fetch_sourcecode(
     http: &reqwest::Client,
     address: &str,
     chain_id: u64,
     api_key: &str,
-) -> Result<(JsonAbi, Option<String>)> {
+) -> Result<Value> {
+    let cache = cache_path(address, chain_id);
+
+    if let Some(bytes) = cache.as_deref().and_then(load_cache) {
+        log::debug!("etherscan: cache hit for {} on chain {}", address, chain_id);
+        return serde_json::from_slice(&bytes).context("Etherscan: failed to parse cached response");
+    }
+
     let url = format!(
         "https://api.etherscan.io/v2/api\
          ?module=contract&action=getsourcecode\
          &address={address}&chainid={chain_id}&apikey={api_key}"
     );
 
-    let resp: Value = http
+    log::debug!("etherscan: fetching {} on chain {}", address, chain_id);
+    let bytes = http
         .get(&url)
         .send()
         .await
         .context("Etherscan request failed")?
-        .json()
+        .bytes()
         .await
-        .context("Etherscan response parse failed")?;
+        .context("Etherscan response read failed")?;
+
+    let resp: Value =
+        serde_json::from_slice(&bytes).context("Etherscan response parse failed")?;
+
+    // Only cache successful responses.
+    let status = resp.get("status").and_then(|s| s.as_str()).unwrap_or("0");
+    if status == "1" {
+        if let Some(path) = &cache {
+            save_cache(path, &bytes);
+        }
+    }
+
+    Ok(resp)
+}
+
+async fn fetch_abi_and_name(
+    http: &reqwest::Client,
+    address: &str,
+    chain_id: u64,
+    api_key: &str,
+) -> Result<(JsonAbi, Option<String>)> {
+    let resp = fetch_sourcecode(http, address, chain_id, api_key).await?;
 
     let status = resp.get("status").and_then(|s| s.as_str()).unwrap_or("0");
     if status != "1" {
@@ -99,13 +153,7 @@ async fn fetch_contract_name(
     chain_id: u64,
     api_key: &str,
 ) -> Result<String> {
-    let url = format!(
-        "https://api.etherscan.io/v2/api\
-         ?module=contract&action=getsourcecode\
-         &address={address}&chainid={chain_id}&apikey={api_key}"
-    );
-
-    let resp: serde_json::Value = http.get(&url).send().await?.json().await?;
+    let resp = fetch_sourcecode(http, address, chain_id, api_key).await?;
 
     let status = resp.get("status").and_then(|s| s.as_str()).unwrap_or("0");
     if status != "1" {

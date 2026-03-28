@@ -151,13 +151,16 @@ fn build_call_node(
     let mut decoded_output: Option<Vec<DecodedArg>> = None;
     let mut contract_label: Option<String> = None;
 
+    let is_create = matches!(frame.call_type, CallType::Create | CallType::Create2);
+
     if let Some(addr) = &addr_lower {
         // Label (WellKnownProvider is top-priority, covers precompile names)
         if let Some(lbl) = labels.get(addr) {
             contract_label = Some(lbl.clone());
         }
 
-        // Resolved ABI
+        // Resolved ABI (skipped for CREATE/CREATE2 — input is initcode, not calldata)
+        if !is_create {
         if let Some(resolved) = abis.get(addr) {
             if contract_label.is_none() {
                 contract_label = resolved.contract_name.clone();
@@ -199,9 +202,10 @@ fn build_call_node(
                 function_name = resolved.contract_name.clone();
             }
         }
+        } // end !is_create
 
         // Well-known ABI fallback (ERC-20, ERC-721)
-        if function_name.is_none() && !frame.input.is_empty() && frame.input != "0x" {
+        if !is_create && function_name.is_none() && !frame.input.is_empty() && frame.input != "0x" {
             let input_bytes =
                 hex::decode(frame.input.trim_start_matches("0x")).unwrap_or_default();
             'wk: for make_abi in
@@ -339,7 +343,9 @@ fn collect_unresolved_selectors(node: &Node) -> Vec<String> {
 
 fn collect_unresolved_inner(node: &Node, out: &mut HashSet<String>) {
     let Node::Call(call) = node else { return };
-    if call.function_name.is_none() {
+    if call.function_name.is_none()
+        && !matches!(call.call_type, CallType::Create | CallType::Create2)
+    {
         let hex = call.input.trim_start_matches("0x");
         if hex.len() >= 8 {
             out.insert(format!("0x{}", &hex[..8].to_lowercase()));
@@ -352,7 +358,9 @@ fn collect_unresolved_inner(node: &Node, out: &mut HashSet<String>) {
 
 fn apply_fourbyte_names(node: &mut Node, names: &HashMap<String, Vec<Function>>) {
     let Node::Call(call) = node else { return };
-    if call.function_name.is_none() {
+    if call.function_name.is_none()
+        && !matches!(call.call_type, CallType::Create | CallType::Create2)
+    {
         let hex = call.input.trim_start_matches("0x");
         if hex.len() >= 8 {
             let key = format!("0x{}", &hex[..8].to_lowercase());

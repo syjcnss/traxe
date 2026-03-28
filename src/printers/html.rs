@@ -243,14 +243,15 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
 
       const input    = node.input || '';
       const hexInput = input.replace(/^0x/i, '');
-      const selector = hexInput.length >= 8 ? `0x${hexInput.slice(0, 8)}` : null;
+      const isCreate = node.call_type === 'CREATE' || node.call_type === 'CREATE2';
+      const selector = !isCreate && hexInput.length >= 8 ? `0x${hexInput.slice(0, 8)}` : null;
       const valueStr = formatValue(node.value, nativeSymbol);
       const gasStr   = formatGas(node.gas_used);
 
       const targetLabel = node.contract_label || node.to || node.from;
       const showAddr    = !!(node.contract_label && node.to);
 
-      const skipIO        = isTransparentDelegate(node);
+      const skipIO        = isCreate || isTransparentDelegate(node);
       const hasDecodedIn  = !skipIO && node.decoded_input  && node.decoded_input.length  > 0;
       const hasDecodedOut = !skipIO && node.decoded_output && node.decoded_output.length > 0;
       const hasRawIn      = !skipIO && (showRawData || (!node.decoded_input  && rawIn  !== '0x'));

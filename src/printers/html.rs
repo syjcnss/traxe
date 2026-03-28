@@ -253,8 +253,8 @@ const TEMPLATE: &str = r###"<!DOCTYPE html>
       const skipIO        = isTransparentDelegate(node);
       const hasDecodedIn  = !skipIO && node.decoded_input  && node.decoded_input.length  > 0;
       const hasDecodedOut = !skipIO && node.decoded_output && node.decoded_output.length > 0;
-      const hasRawIn      = !skipIO && showRawData;
-      const hasRawOut     = !skipIO && showRawData;
+      const hasRawIn      = !skipIO && (showRawData || (!node.decoded_input  && rawIn  !== '0x'));
+      const hasRawOut     = !skipIO && (showRawData || (!node.decoded_output && rawOut !== '0x'));
       const rawIn         = (input && input !== '') ? input : '0x';
       const rawOut        = (node.output && node.output !== '') ? node.output : '0x';
 
